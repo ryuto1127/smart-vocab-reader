@@ -9,8 +9,8 @@ import {
 
 const CONTEXT_MENU_ID = "cefr-reading-assistant-analyze-selection";
 const REQUEST_TIMEOUT_MS = Object.freeze({
-  analyze: 22000,
-  details: 22000
+  analyze: 32000,
+  details: 24000
 });
 
 async function ensureDefaults() {

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { analyzeSelection, createAnalysisService } from "../backend/analysis-service.js";
 
 test("analyzeSelection asks for a shorter selection when the text is too long", async () => {
-  const longText = "astonishing ".repeat(250);
+  const longText = "astonishing ".repeat(600);
   const result = await analyzeSelection({
     selectionText: longText,
     threshold: "B1"

@@ -74,7 +74,7 @@ test("extractCandidateSeeds avoids easy ambiguous matches below the threshold", 
 });
 
 test("extractCandidateSeeds stops on very long selections", () => {
-  const longText = Array.from({ length: 360 }, () => "astonishing").join(" ");
+  const longText = Array.from({ length: 600 }, () => "astonishing").join(" ");
   const result = extractCandidateSeeds({
     text: longText,
     threshold: "B1",

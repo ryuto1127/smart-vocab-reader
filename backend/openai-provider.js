@@ -7,7 +7,7 @@ import {
 
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
-const DEFAULT_OPENAI_TIMEOUT_MS = 18000;
+const DEFAULT_OPENAI_TIMEOUT_MS = 26000;
 
 function getDefaultEnv() {
   if (typeof process !== "undefined" && process?.env) {
@@ -84,7 +84,8 @@ async function callOpenAiJson({
   schema,
   env = getDefaultEnv(),
   fetchImpl,
-  timeoutMs = DEFAULT_OPENAI_TIMEOUT_MS
+  timeoutMs = DEFAULT_OPENAI_TIMEOUT_MS,
+  maxOutputTokens = 1200
 }) {
   const apiKey = getStringValue(env, "OPENAI_API_KEY");
 
@@ -107,7 +108,7 @@ async function callOpenAiJson({
         store: false,
         instructions,
         input: JSON.stringify(input),
-        max_output_tokens: 1200,
+        max_output_tokens: maxOutputTokens,
         text: {
           format: {
             type: "json_schema",
@@ -156,7 +157,8 @@ export async function analyzeCandidatesWithAi(
     schema: ANALYZE_RESPONSE_SCHEMA,
     env: runtime.env,
     fetchImpl: runtime.fetchImpl,
-    timeoutMs: runtime.timeoutMs
+    timeoutMs: runtime.timeoutMs,
+    maxOutputTokens: 2200
   });
 }
 

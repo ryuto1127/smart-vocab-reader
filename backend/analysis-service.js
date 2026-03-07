@@ -11,9 +11,9 @@ import {
 const lexiconIndex = createLexiconIndex(lexiconEntries);
 
 const CACHE_TTL_MS = 1000 * 60 * 60 * 6;
-const MAX_SELECTION_WORDS = 350;
-const MAX_SELECTION_CHARACTERS = 1800;
-const MAX_AI_CANDIDATES = 12;
+const MAX_SELECTION_WORDS = 550;
+const MAX_SELECTION_CHARACTERS = 3600;
+const MAX_AI_CANDIDATES = 20;
 const defaultAnalysisCache = new Map();
 
 function getDefaultEnv() {
