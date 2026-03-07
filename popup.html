@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CEFR Reading Assistant</title>
+    <link rel="stylesheet" href="./popup.css">
+  </head>
+  <body>
+    <main class="popup-shell">
+      <section class="hero">
+        <p class="eyebrow">Reading assistant</p>
+        <h1>Keep reading.</h1>
+        <p class="lede">Select text on a page and see only the words that are hard for your level.</p>
+        <button id="toggle-reading" class="toggle-button" type="button"></button>
+      </section>
+
+      <section class="panel">
+        <label class="field">
+          <span class="field-label">Show words from</span>
+          <select id="cefr-level" class="field-control">
+            <option value="A1">A1</option>
+            <option value="A2">A2</option>
+            <option value="B1">B1</option>
+            <option value="B2">B2</option>
+            <option value="C1">C1</option>
+            <option value="C2">C2</option>
+          </select>
+        </label>
+
+        <p id="saved-summary" class="meta"></p>
+
+        <div class="actions">
+          <button id="open-dashboard" class="secondary-button" type="button">Saved words & review</button>
+          <button id="open-onboarding" class="ghost-button" type="button">Onboarding</button>
+        </div>
+      </section>
+
+      <footer class="footer-note">Tip: right-click selected text or turn reading mode on and release the mouse.</footer>
+    </main>
+
+    <script type="module" src="./popup.js"></script>
+  </body>
+</html>

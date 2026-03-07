@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CEFR Reading Assistant</title>
+    <link rel="stylesheet" href="./dashboard.css">
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="masthead">
+        <p class="eyebrow">CEFR reading assistant</p>
+        <h1>Read first. Check words only when you need them.</h1>
+        <p class="masthead-copy">Choose your level, save useful words, and review them with quick flashcards.</p>
+      </section>
+
+      <nav class="tabs" aria-label="Dashboard sections">
+        <button class="tab-button" data-panel="saved" type="button">Saved words</button>
+        <button class="tab-button" data-panel="review" type="button">Review</button>
+        <button class="tab-button" data-panel="settings" type="button">Settings</button>
+        <button class="tab-button" data-panel="onboarding" type="button">Onboarding</button>
+      </nav>
+
+      <section id="panel-saved" class="panel">
+        <div class="panel-header">
+          <h2>Saved words</h2>
+          <p id="saved-count" class="panel-copy"></p>
+        </div>
+        <div id="saved-list" class="saved-list"></div>
+      </section>
+
+      <section id="panel-review" class="panel">
+        <div class="panel-header">
+          <h2>Flashcard review</h2>
+          <p class="panel-copy">Cards appear in random order. The example stays visible; reveal the meaning only when you need it.</p>
+        </div>
+        <div id="review-empty" class="empty-state">Save a few words first, then come back here.</div>
+        <div id="review-card" class="flashcard" hidden>
+          <div class="flashcard-word-row">
+            <div>
+              <p class="flashcard-label">Front</p>
+              <h3 id="review-front"></h3>
+            </div>
+          </div>
+          <div class="flashcard-example-block">
+            <p class="flashcard-label">Example</p>
+            <p id="review-example" class="flashcard-copy"></p>
+          </div>
+          <div id="review-prompt" class="flashcard-prompt">
+            Say the meaning in your own words first, then reveal it.
+          </div>
+          <div id="review-back" class="flashcard-back" hidden>
+            <div class="flashcard-answer-head">
+              <p class="flashcard-label">Meaning</p>
+              <span id="review-cefr" class="badge"></span>
+            </div>
+            <p id="review-definition" class="flashcard-copy"></p>
+          </div>
+          <div class="flashcard-actions">
+            <button id="flip-card" class="primary-button" type="button">Show meaning</button>
+            <button id="next-card" class="ghost-button" type="button">Next random card</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="panel-settings" class="panel">
+        <div class="panel-header">
+          <h2>Settings</h2>
+          <p class="panel-copy">MVP has one learner setting: your CEFR threshold.</p>
+        </div>
+        <label class="field">
+          <span class="field-label">Current CEFR level</span>
+          <select id="settings-cefr-level" class="field-control">
+            <option value="A1">A1</option>
+            <option value="A2">A2</option>
+            <option value="B1">B1</option>
+            <option value="B2">B2</option>
+            <option value="C1">C1</option>
+            <option value="C2">C2</option>
+          </select>
+        </label>
+        <p class="privacy-note">Selected text may be sent to your analysis backend so it can call an AI service for contextual meanings.</p>
+      </section>
+
+      <section id="panel-onboarding" class="panel">
+        <div class="panel-header">
+          <h2>Onboarding</h2>
+          <p class="panel-copy">This is the first-use flow for the MVP.</p>
+        </div>
+
+        <ol class="onboarding-list">
+          <li>Pin the extension so you can turn reading mode on fast.</li>
+          <li>Choose your CEFR level.</li>
+          <li>Turn reading mode on in the popup.</li>
+          <li>Select text on a page to see hard words near the text.</li>
+          <li>Save useful words and review them later here.</li>
+        </ol>
+
+        <label class="field">
+          <span class="field-label">Choose your CEFR level</span>
+          <select id="onboarding-cefr-level" class="field-control">
+            <option value="A1">A1</option>
+            <option value="A2">A2</option>
+            <option value="B1">B1</option>
+            <option value="B2">B2</option>
+            <option value="C1">C1</option>
+            <option value="C2">C2</option>
+          </select>
+        </label>
+
+        <div class="onboarding-actions">
+          <button id="finish-onboarding" class="primary-button" type="button">Finish onboarding</button>
+          <button id="turn-reading-on" class="ghost-button" type="button">Finish and turn reading mode on</button>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./dashboard.js"></script>
+  </body>
+</html>

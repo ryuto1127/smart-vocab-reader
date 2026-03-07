@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "CEFR Reading Assistant",
+  "version": "0.1.0",
+  "description": "Show difficult words near your selected text and save them for review.",
+  "permissions": [
+    "contextMenus",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8787/*",
+    "http://localhost:8787/*",
+    "https://*.workers.dev/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "CEFR Reading Assistant"
+  },
+  "options_page": "pages/dashboard.html",
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content-script.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

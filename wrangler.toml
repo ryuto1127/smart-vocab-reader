@@ -1,0 +1,7 @@
+name = "cefr-reading-assistant-api"
+main = "worker/index.js"
+compatibility_date = "2026-03-06"
+
+[vars]
+OPENAI_MODEL = "gpt-4o-mini"
+OPENAI_BASE_URL = "https://api.openai.com/v1"

@@ -1,0 +1,7 @@
+.swift-module-cache/
+.dev.vars
+.env
+.wrangler/
+node_modules/
+*.log
+*.tmp

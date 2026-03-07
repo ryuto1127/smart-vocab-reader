@@ -1,0 +1,269 @@
+import lexiconEntries from "../data/cefr-lexicon.json" with { type: "json" };
+
+import { createLexiconIndex, extractCandidateSeeds } from "../shared/text-analysis.js";
+import { meetsThreshold } from "../shared/cefr.js";
+import {
+  analyzeCandidatesWithAi,
+  isAiConfigured,
+  loadWordDetailsWithAi
+} from "./openai-provider.js";
+
+const lexiconIndex = createLexiconIndex(lexiconEntries);
+
+const CACHE_TTL_MS = 1000 * 60 * 60 * 6;
+const MAX_SELECTION_WORDS = 350;
+const MAX_SELECTION_CHARACTERS = 1800;
+const MAX_AI_CANDIDATES = 12;
+const defaultAnalysisCache = new Map();
+
+function getDefaultEnv() {
+  if (typeof process !== "undefined" && process?.env) {
+    return process.env;
+  }
+
+  return {};
+}
+
+function sanitizeCard(card) {
+  return {
+    same_context_key: String(card.same_context_key ?? "").trim(),
+    surface: String(card.surface ?? "").trim(),
+    lemma: String(card.lemma ?? "").trim().toLowerCase(),
+    cefr: String(card.cefr ?? "").trim(),
+    part_of_speech: String(card.part_of_speech ?? "").trim(),
+    definition_simple_en: String(card.definition_simple_en ?? "").trim(),
+    example_simple_en: String(card.example_simple_en ?? "").trim()
+  };
+}
+
+function buildFallbackExample(seed) {
+  const sentence = String(seed.sentence ?? "").trim();
+  const surface = String(seed.surface ?? "").trim();
+
+  if (!sentence) {
+    return `Look at "${surface}" in the text again.`;
+  }
+
+  if (!surface) {
+    return sentence;
+  }
+
+  const escaped = surface.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const masked = sentence.replace(new RegExp(`\\b${escaped}\\b`, "i"), "_____");
+  return masked === sentence ? sentence : masked;
+}
+
+function buildOfflineCard(seed, threshold, fallbackReason) {
+  const cefr = seed.lexicalCefr && meetsThreshold(seed.lexicalCefr, threshold)
+    ? seed.lexicalCefr
+    : threshold;
+  const partOfSpeech = seed.partOfSpeechHints[0] ?? "word";
+
+  return {
+    same_context_key: seed.sameContextKey,
+    surface: seed.surface,
+    lemma: seed.lemma,
+    cefr,
+    part_of_speech: partOfSpeech,
+    definition_simple_en: fallbackReason === "ai_not_configured"
+      ? "Meaning needs AI setup."
+      : "Meaning could not load. Try a shorter text.",
+    example_simple_en: buildFallbackExample(seed),
+    sentence: seed.sentence,
+    previous_sentence: seed.previousSentence,
+    next_sentence: seed.nextSentence,
+    details_loaded: false
+  };
+}
+
+function mergeCards(candidates, cards) {
+  const byKey = new Map(
+    cards
+      .map(sanitizeCard)
+      .filter((card) => card.same_context_key && card.definition_simple_en)
+      .map((card) => [card.same_context_key, card])
+  );
+
+  return candidates
+    .map((candidate) => {
+      const card = byKey.get(candidate.sameContextKey);
+      if (!card) {
+        return null;
+      }
+
+      return {
+        ...card,
+        sentence: candidate.sentence,
+        previous_sentence: candidate.previousSentence,
+        next_sentence: candidate.nextSentence,
+        details_loaded: false
+      };
+    })
+    .filter(Boolean);
+}
+
+function filterCardsByThreshold(cards, threshold) {
+  return cards.filter((card) => meetsThreshold(card.cefr, threshold));
+}
+
+export function createAnalysisService(runtime = {}) {
+  const cache = runtime.cache ?? defaultAnalysisCache;
+  const now = runtime.now ?? (() => Date.now());
+  const env = runtime.env ?? getDefaultEnv();
+  const fetchImpl = runtime.fetchImpl;
+  const aiTimeoutMs = runtime.aiTimeoutMs;
+
+  function getCacheValue(key) {
+    const cached = cache.get(key);
+
+    if (!cached) {
+      return null;
+    }
+
+    if (now() - cached.createdAt > CACHE_TTL_MS) {
+      cache.delete(key);
+      return null;
+    }
+
+    return cached.value;
+  }
+
+  function setCacheValue(key, value) {
+    cache.set(key, {
+      createdAt: now(),
+      value
+    });
+  }
+
+  async function analyzeSelection({ selectionText, threshold }) {
+    const cacheKey = JSON.stringify({ selectionText, threshold });
+    const cached = getCacheValue(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
+    if (selectionText.length > MAX_SELECTION_CHARACTERS) {
+      return {
+        selection_too_long: true,
+        message: "Please select a shorter text.",
+        cards: []
+      };
+    }
+
+    const localAnalysis = extractCandidateSeeds({
+      text: selectionText,
+      threshold,
+      lexiconIndex,
+      maxWords: MAX_SELECTION_WORDS
+    });
+
+    if (localAnalysis.selectionTooLong) {
+      return {
+        selection_too_long: true,
+        message: "Please select a shorter text.",
+        cards: []
+      };
+    }
+
+    if (localAnalysis.candidates.length === 0) {
+      return {
+        selection_too_long: false,
+        cards: []
+      };
+    }
+
+    if (localAnalysis.candidates.length > MAX_AI_CANDIDATES) {
+      return {
+        selection_too_long: true,
+        message: "Please select a shorter text.",
+        cards: []
+      };
+    }
+
+    let cards;
+    let usedAi = false;
+    let fallbackReason = null;
+
+    if (isAiConfigured(env)) {
+      try {
+        const response = await analyzeCandidatesWithAi(
+          {
+            threshold,
+            selectionText,
+            candidates: localAnalysis.candidates
+          },
+          {
+            env,
+            fetchImpl,
+            timeoutMs: aiTimeoutMs
+          }
+        );
+
+        cards = filterCardsByThreshold(
+          mergeCards(localAnalysis.candidates, response.cards ?? []),
+          threshold
+        );
+        usedAi = true;
+      } catch {
+        fallbackReason = "ai_temporarily_unavailable";
+        cards = localAnalysis.candidates.map((candidate) => buildOfflineCard(candidate, threshold, fallbackReason));
+      }
+    } else {
+      fallbackReason = "ai_not_configured";
+      cards = localAnalysis.candidates.map((candidate) => buildOfflineCard(candidate, threshold, fallbackReason));
+    }
+
+    const result = {
+      selection_too_long: false,
+      cards,
+      meta: {
+        used_ai: usedAi,
+        candidate_count: localAnalysis.candidates.length,
+        fallback_reason: fallbackReason
+      }
+    };
+
+    if (usedAi || fallbackReason === "ai_not_configured") {
+      setCacheValue(cacheKey, result);
+    }
+
+    return result;
+  }
+
+  async function loadWordDetails(payload) {
+    if (!isAiConfigured(env)) {
+      return {
+        surface: payload.surface,
+        lemma: payload.lemma,
+        synonyms: [],
+        collocations: []
+      };
+    }
+
+    try {
+      return await loadWordDetailsWithAi(payload, {
+        env,
+        fetchImpl,
+        timeoutMs: aiTimeoutMs
+      });
+    } catch {
+      return {
+        surface: payload.surface,
+        lemma: payload.lemma,
+        synonyms: [],
+        collocations: []
+      };
+    }
+  }
+
+  return {
+    analyzeSelection,
+    loadWordDetails
+  };
+}
+
+const defaultService = createAnalysisService();
+
+export const analyzeSelection = defaultService.analyzeSelection;
+export const loadWordDetails = defaultService.loadWordDetails;
