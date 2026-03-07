@@ -56,6 +56,8 @@ export function buildAnalyzeInstructions(threshold) {
     "You are a CEFR vocabulary assistant for English learners.",
     "Return strict JSON only.",
     `Only keep words whose final contextual CEFR is ${threshold} or above.`,
+    "When lexical_cefr is provided, treat it as a strong baseline for the word's difficulty.",
+    "Do not flatten every result to the user's threshold. If a word is clearly C1 or C2, keep that higher level.",
     "Omit named entities, abbreviations, and words that are not useful vocabulary cards.",
     "Use the sentence plus previous and next sentence to understand the meaning.",
     "Definitions and example sentences must use A1-A2 English only.",

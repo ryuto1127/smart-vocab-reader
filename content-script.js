@@ -404,6 +404,22 @@
     positionBubble();
   }
 
+  function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+  }
+
+  function getRectOverlapArea(first, second) {
+    const overlapWidth = Math.max(0, Math.min(first.right, second.right) - Math.max(first.left, second.left));
+    const overlapHeight = Math.max(0, Math.min(first.bottom, second.bottom) - Math.max(first.top, second.top));
+    return overlapWidth * overlapHeight;
+  }
+
+  function getRectDistance(first, second) {
+    const horizontalGap = Math.max(0, Math.max(second.left - first.right, first.left - second.right));
+    const verticalGap = Math.max(0, Math.max(second.top - first.bottom, first.top - second.bottom));
+    return horizontalGap + verticalGap;
+  }
+
   function positionBubble() {
     if (!state.bubbleHost || !state.shadowRoot) {
       return;
@@ -421,27 +437,64 @@
 
     const bubbleRect = bubble.getBoundingClientRect();
     const padding = 12;
-    let top = rect.bottom + 12;
-    let left = rect.left;
+    const gap = 16;
+    const maxTop = Math.max(padding, window.innerHeight - bubbleRect.height - padding);
+    const maxLeft = Math.max(padding, window.innerWidth - bubbleRect.width - padding);
+    const selectionRect = {
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+      left: rect.left
+    };
 
-    if (top + bubbleRect.height > window.innerHeight - padding) {
-      top = rect.top - bubbleRect.height - 12;
+    const candidates = [
+      { top: rect.top, left: rect.right + gap, priority: 0 },
+      { top: rect.top + (rect.height - bubbleRect.height) / 2, left: rect.right + gap, priority: 1 },
+      { top: rect.top, left: rect.left - bubbleRect.width - gap, priority: 2 },
+      { top: rect.top + (rect.height - bubbleRect.height) / 2, left: rect.left - bubbleRect.width - gap, priority: 3 },
+      { top: rect.bottom + gap, left: rect.left, priority: 4 },
+      { top: rect.bottom + gap, left: rect.left + (rect.width - bubbleRect.width) / 2, priority: 5 },
+      { top: rect.top - bubbleRect.height - gap, left: rect.left, priority: 6 },
+      { top: rect.top - bubbleRect.height - gap, left: rect.left + (rect.width - bubbleRect.width) / 2, priority: 7 }
+    ];
+
+    const bestCandidate = candidates
+      .map((candidate) => {
+        const top = clamp(candidate.top, padding, maxTop);
+        const left = clamp(candidate.left, padding, maxLeft);
+        const placedBubble = {
+          top,
+          right: left + bubbleRect.width,
+          bottom: top + bubbleRect.height,
+          left
+        };
+
+        return {
+          ...candidate,
+          top,
+          left,
+          overlapArea: getRectOverlapArea(placedBubble, selectionRect),
+          distance: getRectDistance(placedBubble, selectionRect)
+        };
+      })
+      .sort((first, second) => {
+        if (first.overlapArea !== second.overlapArea) {
+          return first.overlapArea - second.overlapArea;
+        }
+
+        if (first.distance !== second.distance) {
+          return first.distance - second.distance;
+        }
+
+        return first.priority - second.priority;
+      })[0];
+
+    if (!bestCandidate) {
+      return;
     }
 
-    if (top < padding) {
-      top = padding;
-    }
-
-    if (left + bubbleRect.width > window.innerWidth - padding) {
-      left = window.innerWidth - bubbleRect.width - padding;
-    }
-
-    if (left < padding) {
-      left = padding;
-    }
-
-    state.bubbleHost.style.top = `${top}px`;
-    state.bubbleHost.style.left = `${left}px`;
+    state.bubbleHost.style.top = `${bestCandidate.top}px`;
+    state.bubbleHost.style.left = `${bestCandidate.left}px`;
   }
 
   function eventIsInsideBubble(event) {

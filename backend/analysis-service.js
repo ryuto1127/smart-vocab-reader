@@ -1,7 +1,7 @@
 import lexiconEntries from "../data/cefr-lexicon.json" with { type: "json" };
 
 import { createLexiconIndex, extractCandidateSeeds } from "../shared/text-analysis.js";
-import { meetsThreshold } from "../shared/cefr.js";
+import { highestCefr, meetsThreshold } from "../shared/cefr.js";
 import {
   analyzeCandidatesWithAi,
   isAiConfigured,
@@ -76,6 +76,18 @@ function buildOfflineCard(seed, threshold, fallbackReason) {
   };
 }
 
+function resolveFinalCefr(candidate, card) {
+  const lexicalBaseline = candidate.missingFromLexicon
+    ? null
+    : candidate.lexicalCefr;
+
+  if (lexicalBaseline && card.cefr) {
+    return highestCefr([lexicalBaseline, card.cefr]) ?? card.cefr;
+  }
+
+  return card.cefr || lexicalBaseline || "";
+}
+
 function mergeCards(candidates, cards) {
   const byKey = new Map(
     cards
@@ -93,6 +105,7 @@ function mergeCards(candidates, cards) {
 
       return {
         ...card,
+        cefr: resolveFinalCefr(candidate, card),
         sentence: candidate.sentence,
         previous_sentence: candidate.previousSentence,
         next_sentence: candidate.nextSentence,
@@ -112,6 +125,9 @@ export function createAnalysisService(runtime = {}) {
   const env = runtime.env ?? getDefaultEnv();
   const fetchImpl = runtime.fetchImpl;
   const aiTimeoutMs = runtime.aiTimeoutMs;
+  const analyzeCandidatesWithAiImpl = runtime.analyzeCandidatesWithAiImpl ?? analyzeCandidatesWithAi;
+  const loadWordDetailsWithAiImpl = runtime.loadWordDetailsWithAiImpl ?? loadWordDetailsWithAi;
+  const isAiConfiguredImpl = runtime.isAiConfiguredImpl ?? isAiConfigured;
 
   function getCacheValue(key) {
     const cached = cache.get(key);
@@ -185,9 +201,9 @@ export function createAnalysisService(runtime = {}) {
     let usedAi = false;
     let fallbackReason = null;
 
-    if (isAiConfigured(env)) {
+    if (isAiConfiguredImpl(env)) {
       try {
-        const response = await analyzeCandidatesWithAi(
+        const response = await analyzeCandidatesWithAiImpl(
           {
             threshold,
             selectionText,
@@ -232,7 +248,7 @@ export function createAnalysisService(runtime = {}) {
   }
 
   async function loadWordDetails(payload) {
-    if (!isAiConfigured(env)) {
+    if (!isAiConfiguredImpl(env)) {
       return {
         surface: payload.surface,
         lemma: payload.lemma,
@@ -242,7 +258,7 @@ export function createAnalysisService(runtime = {}) {
     }
 
     try {
-      return await loadWordDetailsWithAi(payload, {
+      return await loadWordDetailsWithAiImpl(payload, {
         env,
         fetchImpl,
         timeoutMs: aiTimeoutMs
