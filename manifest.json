@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CEFR Reading Assistant",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Show difficult words near your selected text and save them for review.",
   "permissions": [
     "contextMenus",
