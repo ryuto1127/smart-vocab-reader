@@ -60,4 +60,4 @@ You can:
 
 ## Contact
 
-For privacy questions, add your support email or support page here before publishing.
+ryuto.2007.11.27@gmail.com

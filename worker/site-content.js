@@ -168,7 +168,7 @@ export function renderPrivacyPolicyPage() {
       </ul>
 
       <h2>Contact</h2>
-      <p>Add your support email or support page here before publishing.</p>
+      <p>ryuto.2007.11.27@gmail.com</p>
     `
   });
 }
