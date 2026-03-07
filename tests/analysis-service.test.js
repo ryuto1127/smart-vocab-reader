@@ -84,3 +84,25 @@ test("analysis service keeps higher lexical CEFR instead of flattening everythin
     ["abolish:C1", "accordance:C1", "framework:B2"]
   );
 });
+
+test("analyzeSelection does not reject a moderate passage just because it creates more than one AI batch", async () => {
+  const previousKey = process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+
+  const selectionText = `Thrilled by this sudden increase in sales, the company decided to formally implement the programme. In 1963 the "Women's Delivery Sales Network" - now known as the Yakult Lady system - was formally established.
+
+Yakult Ladies are easy to spot in the community. In their blue uniforms with signature red plaid trim, they've become almost as recognisable as the Yakult bottles themselves. They're often seen whizzing about their neighbourhoods on bikes, motorbikes, on foot or by car, making multiple deliveries each day. Most of them are self-employed, offering flexibility that attracts women balancing work and family.`;
+  const result = await analyzeSelection({
+    selectionText,
+    threshold: "B1"
+  });
+
+  if (previousKey !== undefined) {
+    process.env.OPENAI_API_KEY = previousKey;
+  }
+
+  assert.equal(result.selection_too_long, false);
+  assert.equal(result.meta.candidate_count, 24);
+  assert.equal(result.meta.batch_count, 2);
+  assert.ok(result.cards.length > 0);
+});

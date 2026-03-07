@@ -13,7 +13,8 @@ const lexiconIndex = createLexiconIndex(lexiconEntries);
 const CACHE_TTL_MS = 1000 * 60 * 60 * 6;
 const MAX_SELECTION_WORDS = 550;
 const MAX_SELECTION_CHARACTERS = 3600;
-const MAX_AI_CANDIDATES = 20;
+const MAX_AI_CANDIDATES_PER_REQUEST = 20;
+const MAX_AI_CANDIDATES_TOTAL = 48;
 const defaultAnalysisCache = new Map();
 
 function getDefaultEnv() {
@@ -119,6 +120,16 @@ function filterCardsByThreshold(cards, threshold) {
   return cards.filter((card) => meetsThreshold(card.cefr, threshold));
 }
 
+function chunkCandidates(candidates, chunkSize) {
+  const chunks = [];
+
+  for (let index = 0; index < candidates.length; index += chunkSize) {
+    chunks.push(candidates.slice(index, index + chunkSize));
+  }
+
+  return chunks;
+}
+
 export function createAnalysisService(runtime = {}) {
   const cache = runtime.cache ?? defaultAnalysisCache;
   const now = runtime.now ?? (() => Date.now());
@@ -189,10 +200,10 @@ export function createAnalysisService(runtime = {}) {
       };
     }
 
-    if (localAnalysis.candidates.length > MAX_AI_CANDIDATES) {
+    if (localAnalysis.candidates.length > MAX_AI_CANDIDATES_TOTAL) {
       return {
         selection_too_long: true,
-        message: "Please select a shorter text.",
+        message: "There are too many difficult words in this selection. Try a shorter text or choose a higher CEFR level.",
         cards: []
       };
     }
@@ -203,21 +214,25 @@ export function createAnalysisService(runtime = {}) {
 
     if (isAiConfiguredImpl(env)) {
       try {
-        const response = await analyzeCandidatesWithAiImpl(
-          {
-            threshold,
-            selectionText,
-            candidates: localAnalysis.candidates
-          },
-          {
-            env,
-            fetchImpl,
-            timeoutMs: aiTimeoutMs
-          }
+        const candidateBatches = chunkCandidates(localAnalysis.candidates, MAX_AI_CANDIDATES_PER_REQUEST);
+        const responses = await Promise.all(
+          candidateBatches.map((candidates) => analyzeCandidatesWithAiImpl(
+            {
+              threshold,
+              selectionText,
+              candidates
+            },
+            {
+              env,
+              fetchImpl,
+              timeoutMs: aiTimeoutMs
+            }
+          ))
         );
+        const mergedResponseCards = responses.flatMap((response) => response.cards ?? []);
 
         cards = filterCardsByThreshold(
-          mergeCards(localAnalysis.candidates, response.cards ?? []),
+          mergeCards(localAnalysis.candidates, mergedResponseCards),
           threshold
         );
         usedAi = true;
@@ -236,6 +251,7 @@ export function createAnalysisService(runtime = {}) {
       meta: {
         used_ai: usedAi,
         candidate_count: localAnalysis.candidates.length,
+        batch_count: Math.ceil(localAnalysis.candidates.length / MAX_AI_CANDIDATES_PER_REQUEST),
         fallback_reason: fallbackReason
       }
     };
