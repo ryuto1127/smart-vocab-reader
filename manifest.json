@@ -11,15 +11,26 @@
   "host_permissions": [
     "http://127.0.0.1:8787/*",
     "http://localhost:8787/*",
-    "https://*.workers.dev/*"
+    "https://*.workers.dev/*",
+    "https://cefr-reading-assistant-api.ryuto-2007-11-27.workers.dev/*"
   ],
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
+  "icons": {
+    "16": "assets/icons/icon-16.png",
+    "32": "assets/icons/icon-32.png",
+    "48": "assets/icons/icon-48.png",
+    "128": "assets/icons/icon-128.png"
+  },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "CEFR Reading Assistant"
+    "default_title": "CEFR Reading Assistant",
+    "default_icon": {
+      "16": "assets/icons/icon-16.png",
+      "32": "assets/icons/icon-32.png"
+    }
   },
   "options_page": "pages/dashboard.html",
   "content_scripts": [

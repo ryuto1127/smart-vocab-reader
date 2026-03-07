@@ -12,6 +12,16 @@ test("worker health endpoint returns ok", async () => {
   assert.equal(payload.service, "cefr-vocab-reader-worker");
 });
 
+test("worker privacy endpoint returns html", async () => {
+  const response = await worker.fetch(new Request("https://example-worker.workers.dev/privacy"), {});
+  const payload = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") ?? "", /text\/html/);
+  assert.match(payload, /CEFR Reading Assistant/i);
+  assert.match(payload, /Privacy Policy/i);
+});
+
 test("worker analyze endpoint validates required fields", async () => {
   const response = await worker.fetch(
     new Request("https://example-worker.workers.dev/api/analyze", {

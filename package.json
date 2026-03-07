@@ -4,9 +4,11 @@
   "type": "module",
   "scripts": {
     "generate:lexicon": "swift -module-cache-path .swift-module-cache scripts/generate_cefr_lexicon.swift",
+    "generate:icons": "swift scripts/generate_extension_icons.swift",
     "start:backend": "wrangler dev --port 8787",
     "deploy:worker": "wrangler deploy",
     "configure:backend": "node scripts/set-extension-backend.mjs",
+    "package:extension": "node scripts/build-extension-package.mjs",
     "test": "node --test"
   },
   "engines": {

@@ -1,4 +1,5 @@
 import { createAnalysisService } from "../backend/analysis-service.js";
+import { renderLandingPage, renderPrivacyPolicyPage } from "./site-content.js";
 
 const BODY_LIMIT_BYTES = 100_000;
 const analysisCache = new Map();
@@ -11,6 +12,15 @@ function jsonResponse(status, payload) {
       "Access-Control-Allow-Headers": "Content-Type",
       "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
       "Content-Type": "application/json; charset=utf-8"
+    }
+  });
+}
+
+function htmlResponse(status, html) {
+  return new Response(html, {
+    status,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8"
     }
   });
 }
@@ -35,6 +45,14 @@ export default {
 
     if (request.method === "OPTIONS") {
       return jsonResponse(204, {});
+    }
+
+    if (request.method === "GET" && url.pathname === "/") {
+      return htmlResponse(200, renderLandingPage());
+    }
+
+    if (request.method === "GET" && url.pathname === "/privacy") {
+      return htmlResponse(200, renderPrivacyPolicyPage());
     }
 
     if (request.method === "GET" && url.pathname === "/health") {
