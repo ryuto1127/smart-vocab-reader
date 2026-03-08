@@ -191,7 +191,7 @@ export async function saveWord(card) {
     sentence: String(card.sentence ?? "").trim(),
     previous_sentence: String(card.previous_sentence ?? "").trim(),
     next_sentence: String(card.next_sentence ?? "").trim(),
-    content_source: hasPlaceholderDefinition(card) ? "fallback" : "ai",
+    content_source: card.content_source === "fallback" || hasPlaceholderDefinition(card) ? "fallback" : "ai",
     savedAt: new Date().toISOString(),
     saveKey
   };

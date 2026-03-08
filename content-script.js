@@ -116,6 +116,26 @@
       line-height: 1.5;
     }
 
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .source-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(218, 111, 59, 0.12);
+      color: #9d5128;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
     .card-panels {
       display: grid;
       gap: 10px;
@@ -322,13 +342,17 @@
   function cardMarkup(card) {
     const saveKey = getSaveKey(card);
     const isSaved = state.savedWordKeys.includes(saveKey);
+    const isFallbackCard = card.content_source === "fallback";
 
     return `
       <article class="card" data-card-key="${escapeHtml(card.same_context_key)}">
         <div class="card-head">
           <div>
             <h3 class="word">${escapeHtml(card.surface)}</h3>
-            <p class="meta">${escapeHtml(card.lemma)} · ${escapeHtml(card.part_of_speech)}</p>
+            <div class="meta-row">
+              <p class="meta">${escapeHtml(card.lemma)} · ${escapeHtml(card.part_of_speech)}</p>
+              ${isFallbackCard ? `<span class="source-chip">Quick meaning</span>` : ""}
+            </div>
           </div>
           <span class="badge">${escapeHtml(card.cefr)}</span>
         </div>
@@ -369,13 +393,15 @@
       content = `<div class="status">${escapeHtml(status.message)}</div>`;
     } else {
       const fallbackReason = state.currentMeta?.fallback_reason;
-      const notice = fallbackReason
+      const fallbackCards = state.currentCards.filter((card) => card.content_source === "fallback");
+      const allCardsAreFallback = state.currentCards.length > 0 && fallbackCards.length === state.currentCards.length;
+      const showGlobalFallbackNotice = fallbackReason === "ai_not_configured"
+        || (fallbackReason && allCardsAreFallback);
+      const notice = showGlobalFallbackNotice
         ? `<div class="notice">${escapeHtml(
             fallbackReason === "ai_not_configured"
               ? "AI meanings are not set up yet. These are quick fallback cards."
-              : fallbackReason === "ai_partial_results"
-                ? "Some AI meanings could not load. Fallback cards are shown for the rest."
-                : "AI meanings could not load right now. Please try again."
+              : "AI meanings could not load right now. These are quick fallback cards."
           )}</div>`
         : "";
       content = notice + state.currentCards.map(cardMarkup).join("");

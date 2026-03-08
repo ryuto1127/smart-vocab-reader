@@ -33,7 +33,8 @@ function sanitizeCard(card) {
     cefr: String(card.cefr ?? "").trim(),
     part_of_speech: String(card.part_of_speech ?? "").trim(),
     definition_simple_en: String(card.definition_simple_en ?? "").trim(),
-    example_simple_en: String(card.example_simple_en ?? "").trim()
+    example_simple_en: String(card.example_simple_en ?? "").trim(),
+    content_source: String(card.content_source ?? "ai").trim() || "ai"
   };
 }
 
@@ -80,7 +81,8 @@ function buildOfflineCard(seed, threshold, fallbackReason) {
     sentence: seed.sentence,
     previous_sentence: seed.previousSentence,
     next_sentence: seed.nextSentence,
-    details_loaded: false
+    details_loaded: false,
+    content_source: "fallback"
   };
 }
 
@@ -125,7 +127,8 @@ function mergeCards(candidates, cards, threshold, fallbackReasonForMissing = nul
         sentence: candidate.sentence,
         previous_sentence: candidate.previousSentence,
         next_sentence: candidate.nextSentence,
-        details_loaded: false
+        details_loaded: false,
+        content_source: card.content_source || "ai"
       };
     })
     .filter(Boolean);

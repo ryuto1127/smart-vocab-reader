@@ -30,6 +30,7 @@ test("fallback cards use sentence-based examples and expose the fallback reason"
   assert.equal(result.selection_too_long, false);
   assert.equal(result.meta.fallback_reason, "ai_not_configured");
   assert.ok(result.cards.length > 0);
+  assert.ok(result.cards.every((card) => card.content_source === "fallback"));
   assert.ok(result.cards[0].example_simple_en.length > 0);
   assert.notEqual(result.cards[0].example_simple_en, `I saw "${result.cards[0].surface}" in this text.`);
 });
@@ -182,6 +183,8 @@ Yakult Ladies are easy to spot in the community. In their blue uniforms with sig
 
   assert.equal(result.selection_too_long, false);
   assert.equal(result.meta.fallback_reason, "ai_partial_results");
+  assert.ok(result.cards.some((card) => card.content_source === "ai"));
+  assert.ok(result.cards.some((card) => card.content_source === "fallback"));
   assert.ok(result.cards.some((card) => card.definition_simple_en === "AI meaning loaded."));
   assert.ok(result.cards.some((card) => card.definition_simple_en === "Meaning could not load for this word right now."));
 });
