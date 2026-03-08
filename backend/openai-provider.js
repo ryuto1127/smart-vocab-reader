@@ -158,7 +158,7 @@ export async function analyzeCandidatesWithAi(
     env: runtime.env,
     fetchImpl: runtime.fetchImpl,
     timeoutMs: runtime.timeoutMs,
-    maxOutputTokens: 2200
+    maxOutputTokens: 2600
   });
 }
 

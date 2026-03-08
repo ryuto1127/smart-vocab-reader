@@ -106,3 +106,37 @@ Yakult Ladies are easy to spot in the community. In their blue uniforms with sig
   assert.equal(result.meta.batch_count, 2);
   assert.ok(result.cards.length > 0);
 });
+
+test("analysis service keeps higher-level lexicon words even when the AI omits them", async () => {
+  const service = createAnalysisService({
+    env: {
+      OPENAI_API_KEY: "test-key"
+    },
+    isAiConfiguredImpl: () => true,
+    analyzeCandidatesWithAiImpl: async ({ candidates }) => ({
+      cards: candidates
+        .filter((candidate) => candidate.lemma === "framework")
+        .map((candidate) => ({
+          same_context_key: candidate.sameContextKey,
+          surface: candidate.surface,
+          lemma: candidate.lemma,
+          cefr: "B2",
+          part_of_speech: candidate.partOfSpeechHints[0] ?? "word",
+          definition_simple_en: "a simple meaning",
+          example_simple_en: "a simple example"
+        }))
+    })
+  });
+
+  const result = await service.analyzeSelection({
+    selectionText: "The government moved to abolish the policy in accordance with the new framework.",
+    threshold: "B1"
+  });
+
+  assert.equal(result.selection_too_long, false);
+  assert.equal(result.meta.fallback_reason, "ai_partial_results");
+  assert.deepEqual(
+    result.cards.map((card) => `${card.lemma}:${card.cefr}`),
+    ["abolish:C1", "policy:B1", "accordance:C1", "framework:B2"]
+  );
+});

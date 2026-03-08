@@ -89,7 +89,7 @@ function resolveFinalCefr(candidate, card) {
   return card.cefr || lexicalBaseline || "";
 }
 
-function mergeCards(candidates, cards) {
+function mergeCards(candidates, cards, threshold, fallbackReasonForMissing = null) {
   const byKey = new Map(
     cards
       .map(sanitizeCard)
@@ -101,6 +101,14 @@ function mergeCards(candidates, cards) {
     .map((candidate) => {
       const card = byKey.get(candidate.sameContextKey);
       if (!card) {
+        if (!candidate.missingFromLexicon && meetsThreshold(candidate.lexicalCefr, threshold)) {
+          return buildOfflineCard(
+            candidate,
+            threshold,
+            fallbackReasonForMissing ?? "ai_temporarily_unavailable"
+          );
+        }
+
         return null;
       }
 
@@ -230,9 +238,12 @@ export function createAnalysisService(runtime = {}) {
           ))
         );
         const mergedResponseCards = responses.flatMap((response) => response.cards ?? []);
+        fallbackReason = mergedResponseCards.length < localAnalysis.candidates.length
+          ? "ai_partial_results"
+          : null;
 
         cards = filterCardsByThreshold(
-          mergeCards(localAnalysis.candidates, mergedResponseCards),
+          mergeCards(localAnalysis.candidates, mergedResponseCards, threshold, fallbackReason),
           threshold
         );
         usedAi = true;
