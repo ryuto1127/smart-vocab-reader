@@ -143,14 +143,13 @@ export function isAiConfigured(env = getDefaultEnv()) {
 }
 
 export async function analyzeCandidatesWithAi(
-  { threshold, selectionText, candidates },
+  { threshold, candidates },
   runtime = {}
 ) {
   return callOpenAiJson({
     instructions: buildAnalyzeInstructions(threshold),
     input: {
       threshold,
-      selection_text: selectionText,
       candidates
     },
     schemaName: "cefr_vocabulary_analysis",

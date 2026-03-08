@@ -373,7 +373,9 @@
         ? `<div class="notice">${escapeHtml(
             fallbackReason === "ai_not_configured"
               ? "AI meanings are not set up yet. These are quick fallback cards."
-              : "AI meanings could not load for this selection. Try a shorter text."
+              : fallbackReason === "ai_partial_results"
+                ? "Some AI meanings could not load. Fallback cards are shown for the rest."
+                : "AI meanings could not load right now. Please try again."
           )}</div>`
         : "";
       content = notice + state.currentCards.map(cardMarkup).join("");

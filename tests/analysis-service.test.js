@@ -56,6 +56,7 @@ test("analyzeSelection includes words above the chosen threshold, not only exact
 
 test("analysis service keeps higher lexical CEFR instead of flattening everything to the threshold", async () => {
   const service = createAnalysisService({
+    cache: new Map(),
     env: {
       OPENAI_API_KEY: "test-key"
     },
@@ -109,6 +110,7 @@ Yakult Ladies are easy to spot in the community. In their blue uniforms with sig
 
 test("analysis service keeps higher-level lexicon words even when the AI omits them", async () => {
   const service = createAnalysisService({
+    cache: new Map(),
     env: {
       OPENAI_API_KEY: "test-key"
     },
@@ -139,4 +141,47 @@ test("analysis service keeps higher-level lexicon words even when the AI omits t
     result.cards.map((card) => `${card.lemma}:${card.cefr}`),
     ["abolish:C1", "policy:B1", "accordance:C1", "framework:B2"]
   );
+});
+
+test("analysis service keeps successful AI batches when another batch fails", async () => {
+  let batchIndex = 0;
+  const service = createAnalysisService({
+    cache: new Map(),
+    env: {
+      OPENAI_API_KEY: "test-key"
+    },
+    isAiConfiguredImpl: () => true,
+    analyzeCandidatesWithAiImpl: async ({ candidates }) => {
+      batchIndex += 1;
+
+      if (batchIndex === 2) {
+        throw new Error("Timed out");
+      }
+
+      return {
+        cards: candidates.map((candidate) => ({
+          same_context_key: candidate.sameContextKey,
+          surface: candidate.surface,
+          lemma: candidate.lemma,
+          cefr: candidate.lexicalCefr ?? "B1",
+          part_of_speech: candidate.partOfSpeechHints[0] ?? "word",
+          definition_simple_en: "AI meaning loaded.",
+          example_simple_en: "AI example loaded."
+        }))
+      };
+    }
+  });
+
+  const selectionText = `Thrilled by this sudden increase in sales, the company decided to formally implement the programme. In 1963 the "Women's Delivery Sales Network" - now known as the Yakult Lady system - was formally established.
+
+Yakult Ladies are easy to spot in the community. In their blue uniforms with signature red plaid trim, they've become almost as recognisable as the Yakult bottles themselves. They're often seen whizzing about their neighbourhoods on bikes, motorbikes, on foot or by car, making multiple deliveries each day. Most of them are self-employed, offering flexibility that attracts women balancing work and family.`;
+  const result = await service.analyzeSelection({
+    selectionText,
+    threshold: "B1"
+  });
+
+  assert.equal(result.selection_too_long, false);
+  assert.equal(result.meta.fallback_reason, "ai_partial_results");
+  assert.ok(result.cards.some((card) => card.definition_simple_en === "AI meaning loaded."));
+  assert.ok(result.cards.some((card) => card.definition_simple_en === "Meaning could not load for this word right now."));
 });

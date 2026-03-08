@@ -59,6 +59,15 @@ function buildOfflineCard(seed, threshold, fallbackReason) {
     ? seed.lexicalCefr
     : threshold;
   const partOfSpeech = seed.partOfSpeechHints[0] ?? "word";
+  let definition = "Meaning could not load right now.";
+
+  if (fallbackReason === "ai_not_configured") {
+    definition = "Meaning needs AI setup.";
+  } else if (fallbackReason === "ai_partial_results") {
+    definition = "Meaning could not load for this word right now.";
+  } else if (fallbackReason === "ai_temporarily_unavailable") {
+    definition = "Meaning could not load right now. Please try again.";
+  }
 
   return {
     same_context_key: seed.sameContextKey,
@@ -66,9 +75,7 @@ function buildOfflineCard(seed, threshold, fallbackReason) {
     lemma: seed.lemma,
     cefr,
     part_of_speech: partOfSpeech,
-    definition_simple_en: fallbackReason === "ai_not_configured"
-      ? "Meaning needs AI setup."
-      : "Meaning could not load. Try a shorter text.",
+    definition_simple_en: definition,
     example_simple_en: buildFallbackExample(seed),
     sentence: seed.sentence,
     previous_sentence: seed.previousSentence,
@@ -223,11 +230,10 @@ export function createAnalysisService(runtime = {}) {
     if (isAiConfiguredImpl(env)) {
       try {
         const candidateBatches = chunkCandidates(localAnalysis.candidates, MAX_AI_CANDIDATES_PER_REQUEST);
-        const responses = await Promise.all(
+        const settledResponses = await Promise.allSettled(
           candidateBatches.map((candidates) => analyzeCandidatesWithAiImpl(
             {
               threshold,
-              selectionText,
               candidates
             },
             {
@@ -237,10 +243,20 @@ export function createAnalysisService(runtime = {}) {
             }
           ))
         );
-        const mergedResponseCards = responses.flatMap((response) => response.cards ?? []);
-        fallbackReason = mergedResponseCards.length < localAnalysis.candidates.length
+        const successfulResponses = settledResponses
+          .filter((response) => response.status === "fulfilled")
+          .map((response) => response.value);
+        const mergedResponseCards = successfulResponses.flatMap((response) => response.cards ?? []);
+        const failedBatchCount = settledResponses.length - successfulResponses.length;
+        const isPartialFallback = failedBatchCount > 0 || mergedResponseCards.length < localAnalysis.candidates.length;
+
+        fallbackReason = isPartialFallback
           ? "ai_partial_results"
           : null;
+
+        if (successfulResponses.length === 0) {
+          throw new Error("All AI batches failed");
+        }
 
         cards = filterCardsByThreshold(
           mergeCards(localAnalysis.candidates, mergedResponseCards, threshold, fallbackReason),
