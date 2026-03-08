@@ -14,6 +14,7 @@ const CACHE_TTL_MS = 1000 * 60 * 60 * 6;
 const MAX_SELECTION_WORDS = 550;
 const MAX_SELECTION_CHARACTERS = 3600;
 const MAX_AI_CANDIDATES_PER_REQUEST = 20;
+const RETRY_AI_CANDIDATES_PER_REQUEST = 8;
 const MAX_AI_CANDIDATES_TOTAL = 48;
 const defaultAnalysisCache = new Map();
 
@@ -148,6 +149,32 @@ function chunkCandidates(candidates, chunkSize) {
   return chunks;
 }
 
+function mergeAiCards(...cardGroups) {
+  const byKey = new Map();
+
+  for (const group of cardGroups) {
+    for (const card of group.map(sanitizeCard)) {
+      if (!card.same_context_key || !card.definition_simple_en) {
+        continue;
+      }
+
+      byKey.set(card.same_context_key, card);
+    }
+  }
+
+  return [...byKey.values()];
+}
+
+function getMissingCandidates(candidates, cards) {
+  const returnedKeys = new Set(
+    cards
+      .map((card) => sanitizeCard(card).same_context_key)
+      .filter(Boolean)
+  );
+
+  return candidates.filter((candidate) => !returnedKeys.has(candidate.sameContextKey));
+}
+
 export function createAnalysisService(runtime = {}) {
   const cache = runtime.cache ?? defaultAnalysisCache;
   const now = runtime.now ?? (() => Date.now());
@@ -178,6 +205,33 @@ export function createAnalysisService(runtime = {}) {
       createdAt: now(),
       value
     });
+  }
+
+  async function analyzeCandidatesOnce(candidates, threshold, chunkSize) {
+    const candidateBatches = chunkCandidates(candidates, chunkSize);
+    const settledResponses = await Promise.allSettled(
+      candidateBatches.map((batch) => analyzeCandidatesWithAiImpl(
+        {
+          threshold,
+          candidates: batch
+        },
+        {
+          env,
+          fetchImpl,
+          timeoutMs: aiTimeoutMs
+        }
+      ))
+    );
+
+    const successfulResponses = settledResponses
+      .filter((response) => response.status === "fulfilled")
+      .map((response) => response.value);
+
+    return {
+      cards: successfulResponses.flatMap((response) => response.cards ?? []),
+      successfulBatchCount: successfulResponses.length,
+      batchCount: candidateBatches.length
+    };
   }
 
   async function analyzeSelection({ selectionText, threshold }) {
@@ -229,37 +283,43 @@ export function createAnalysisService(runtime = {}) {
     let cards;
     let usedAi = false;
     let fallbackReason = null;
+    let retryAttempted = false;
+    let retryCandidateCount = 0;
 
     if (isAiConfiguredImpl(env)) {
       try {
-        const candidateBatches = chunkCandidates(localAnalysis.candidates, MAX_AI_CANDIDATES_PER_REQUEST);
-        const settledResponses = await Promise.allSettled(
-          candidateBatches.map((candidates) => analyzeCandidatesWithAiImpl(
-            {
-              threshold,
-              candidates
-            },
-            {
-              env,
-              fetchImpl,
-              timeoutMs: aiTimeoutMs
-            }
-          ))
+        const firstPass = await analyzeCandidatesOnce(
+          localAnalysis.candidates,
+          threshold,
+          MAX_AI_CANDIDATES_PER_REQUEST
         );
-        const successfulResponses = settledResponses
-          .filter((response) => response.status === "fulfilled")
-          .map((response) => response.value);
-        const mergedResponseCards = successfulResponses.flatMap((response) => response.cards ?? []);
-        const failedBatchCount = settledResponses.length - successfulResponses.length;
-        const isPartialFallback = failedBatchCount > 0 || mergedResponseCards.length < localAnalysis.candidates.length;
+        let mergedResponseCards = firstPass.cards;
+        let successfulBatchCount = firstPass.successfulBatchCount;
+        const missingCandidatesAfterFirstPass = getMissingCandidates(
+          localAnalysis.candidates,
+          mergedResponseCards
+        );
 
-        fallbackReason = isPartialFallback
-          ? "ai_partial_results"
-          : null;
+        if (missingCandidatesAfterFirstPass.length) {
+          retryAttempted = true;
+          retryCandidateCount = missingCandidatesAfterFirstPass.length;
+          const retryPass = await analyzeCandidatesOnce(
+            missingCandidatesAfterFirstPass,
+            threshold,
+            RETRY_AI_CANDIDATES_PER_REQUEST
+          );
+          mergedResponseCards = mergeAiCards(mergedResponseCards, retryPass.cards);
+          successfulBatchCount += retryPass.successfulBatchCount;
+        }
 
-        if (successfulResponses.length === 0) {
+        if (successfulBatchCount === 0) {
           throw new Error("All AI batches failed");
         }
+
+        const unresolvedCandidates = getMissingCandidates(localAnalysis.candidates, mergedResponseCards);
+        fallbackReason = unresolvedCandidates.length
+          ? "ai_partial_results"
+          : null;
 
         cards = filterCardsByThreshold(
           mergeCards(localAnalysis.candidates, mergedResponseCards, threshold, fallbackReason),
@@ -282,7 +342,9 @@ export function createAnalysisService(runtime = {}) {
         used_ai: usedAi,
         candidate_count: localAnalysis.candidates.length,
         batch_count: Math.ceil(localAnalysis.candidates.length / MAX_AI_CANDIDATES_PER_REQUEST),
-        fallback_reason: fallbackReason
+        fallback_reason: fallbackReason,
+        retry_attempted: retryAttempted,
+        retry_candidate_count: retryCandidateCount
       }
     };
 
