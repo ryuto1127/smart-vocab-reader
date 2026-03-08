@@ -201,6 +201,65 @@ function selectLexiconMatches(lemmaOptions, lexiconIndex) {
   };
 }
 
+function inferPreferredPartsOfSpeech(surface) {
+  const normalized = normalizeToken(surface);
+
+  if (normalized.endsWith("ed") && normalized.length > 3) {
+    return new Set(["verb", "adjective"]);
+  }
+
+  if (normalized.endsWith("ly") && normalized.length > 3) {
+    return new Set(["adverb"]);
+  }
+
+  return null;
+}
+
+function hasCompatiblePartOfSpeech(entries, preferredPartsOfSpeech) {
+  if (!preferredPartsOfSpeech?.size) {
+    return entries.length > 0;
+  }
+
+  return entries.some((entry) => entry.partsOfSpeech.some((part) => preferredPartsOfSpeech.has(part)));
+}
+
+function selectLexiconMatchesWithContext(surface, lemmaOptions, lexiconIndex) {
+  const preferredPartsOfSpeech = inferPreferredPartsOfSpeech(surface);
+  const fallbackMatch = selectLexiconMatches(lemmaOptions, lexiconIndex);
+
+  if (!preferredPartsOfSpeech) {
+    return fallbackMatch;
+  }
+
+  for (const option of lemmaOptions) {
+    const entries = lexiconIndex.byNormalizedForm.get(option) ?? [];
+
+    if (hasCompatiblePartOfSpeech(entries, preferredPartsOfSpeech)) {
+      return {
+        selectedLemma: option,
+        matchedEntries: entries.filter((entry) => entry.partsOfSpeech.some((part) => preferredPartsOfSpeech.has(part)))
+      };
+    }
+  }
+
+  const exactSurfaceMatch = lexiconIndex.byNormalizedForm.get(normalizeToken(surface)) ?? [];
+  if (exactSurfaceMatch.length) {
+    return {
+      selectedLemma: normalizeToken(surface),
+      matchedEntries: exactSurfaceMatch
+    };
+  }
+
+  if (!hasCompatiblePartOfSpeech(fallbackMatch.matchedEntries, preferredPartsOfSpeech)) {
+    return {
+      selectedLemma: normalizeToken(surface),
+      matchedEntries: []
+    };
+  }
+
+  return fallbackMatch;
+}
+
 export function segmentSentences(text) {
   if (sentenceSegmenter) {
     return Array.from(sentenceSegmenter.segment(text))
@@ -319,7 +378,11 @@ export function extractCandidateSeeds({
       : false;
 
     const lemmaOptions = lemmaCandidates(word.segment);
-    const { selectedLemma, matchedEntries } = selectLexiconMatches(lemmaOptions, lexiconIndex);
+    const { selectedLemma, matchedEntries } = selectLexiconMatchesWithContext(
+      word.segment,
+      lemmaOptions,
+      lexiconIndex
+    );
     const matchedLevels = unique(matchedEntries.map((entry) => entry.cefr));
     const lexicalCefr = lowestCefr(matchedLevels);
     const lemma = selectedLemma

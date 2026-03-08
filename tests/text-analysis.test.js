@@ -73,6 +73,32 @@ test("extractCandidateSeeds avoids easy ambiguous matches below the threshold", 
   assert.ok(lemmas.includes("negotiate"));
 });
 
+test("extractCandidateSeeds does not force -ed words onto unrelated noun lemmas", () => {
+  const result = extractCandidateSeeds({
+    text: "She bought a potted plant for the kitchen window.",
+    threshold: "B1",
+    lexiconIndex
+  });
+
+  const potted = result.candidates.find((candidate) => candidate.surface.toLowerCase() === "potted");
+  assert.ok(potted);
+  assert.equal(potted.lemma, "potted");
+  assert.equal(potted.missingFromLexicon, true);
+});
+
+test("extractCandidateSeeds still maps real past-tense verbs to their base lemma", () => {
+  const result = extractCandidateSeeds({
+    text: "The company implemented the programme last year.",
+    threshold: "B1",
+    lexiconIndex
+  });
+
+  const implemented = result.candidates.find((candidate) => candidate.surface.toLowerCase() === "implemented");
+  assert.ok(implemented);
+  assert.equal(implemented.lemma, "implement");
+  assert.equal(implemented.missingFromLexicon, false);
+});
+
 test("extractCandidateSeeds stops on very long selections", () => {
   const longText = Array.from({ length: 600 }, () => "astonishing").join(" ");
   const result = extractCandidateSeeds({
