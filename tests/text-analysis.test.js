@@ -99,6 +99,29 @@ test("extractCandidateSeeds still maps real past-tense verbs to their base lemma
   assert.equal(implemented.missingFromLexicon, false);
 });
 
+test("extractCandidateSeeds treats verbal -ing forms like living a lifestyle as the base verb", () => {
+  const result = extractCandidateSeeds({
+    text: "They focus on living a healthy lifestyle.",
+    threshold: "B1",
+    lexiconIndex
+  });
+
+  assert.ok(!result.candidates.some((candidate) => candidate.surface.toLowerCase() === "living"));
+});
+
+test("extractCandidateSeeds keeps true B1 noun uses like cost of living", () => {
+  const result = extractCandidateSeeds({
+    text: "The cost of living is high in the city.",
+    threshold: "B1",
+    lexiconIndex
+  });
+
+  const living = result.candidates.find((candidate) => candidate.surface.toLowerCase() === "living");
+  assert.ok(living);
+  assert.equal(living.lemma, "living");
+  assert.equal(living.lexicalCefr, "B1");
+});
+
 test("extractCandidateSeeds stops on very long selections", () => {
   const longText = Array.from({ length: 600 }, () => "astonishing").join(" ");
   const result = extractCandidateSeeds({

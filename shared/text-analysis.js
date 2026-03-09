@@ -45,6 +45,70 @@ const UNKNOWN_STOPWORDS = new Set([
   "would"
 ]);
 
+const AUXILIARY_VERBS = new Set([
+  "am",
+  "are",
+  "be",
+  "been",
+  "being",
+  "can",
+  "could",
+  "did",
+  "do",
+  "does",
+  "had",
+  "has",
+  "have",
+  "is",
+  "may",
+  "might",
+  "must",
+  "should",
+  "was",
+  "were",
+  "will",
+  "would"
+]);
+
+const PREPOSITIONS = new Set([
+  "about",
+  "after",
+  "before",
+  "by",
+  "for",
+  "from",
+  "in",
+  "into",
+  "of",
+  "on",
+  "to",
+  "with",
+  "without"
+]);
+
+const OBJECT_STARTERS = new Set([
+  "a",
+  "an",
+  "another",
+  "any",
+  "each",
+  "every",
+  "her",
+  "his",
+  "its",
+  "my",
+  "no",
+  "our",
+  "some",
+  "that",
+  "the",
+  "their",
+  "these",
+  "this",
+  "those",
+  "your"
+]);
+
 const IRREGULAR_LEMMAS = Object.freeze({
   better: "good",
   best: "good",
@@ -223,9 +287,51 @@ function hasCompatiblePartOfSpeech(entries, preferredPartsOfSpeech) {
   return entries.some((entry) => entry.partsOfSpeech.some((part) => preferredPartsOfSpeech.has(part)));
 }
 
-function selectLexiconMatchesWithContext(surface, lemmaOptions, lexiconIndex) {
+function shouldPreferVerbLemmaForIng(surface, previousNormalized, nextNormalized) {
+  const normalized = normalizeToken(surface);
+
+  if (!normalized.endsWith("ing") || normalized.length <= 4) {
+    return false;
+  }
+
+  if (AUXILIARY_VERBS.has(previousNormalized)) {
+    return true;
+  }
+
+  if (OBJECT_STARTERS.has(nextNormalized)) {
+    return true;
+  }
+
+  return PREPOSITIONS.has(previousNormalized) && OBJECT_STARTERS.has(nextNormalized);
+}
+
+function selectLexiconMatchesWithContext(
+  surface,
+  lemmaOptions,
+  lexiconIndex,
+  previousNormalized = "",
+  nextNormalized = ""
+) {
   const preferredPartsOfSpeech = inferPreferredPartsOfSpeech(surface);
   const fallbackMatch = selectLexiconMatches(lemmaOptions, lexiconIndex);
+
+  if (shouldPreferVerbLemmaForIng(surface, previousNormalized, nextNormalized)) {
+    for (const option of lemmaOptions) {
+      if (option === normalizeToken(surface)) {
+        continue;
+      }
+
+      const entries = lexiconIndex.byNormalizedForm.get(option) ?? [];
+      const verbEntries = entries.filter((entry) => entry.partsOfSpeech.includes("verb"));
+
+      if (verbEntries.length) {
+        return {
+          selectedLemma: option,
+          matchedEntries: verbEntries
+        };
+      }
+    }
+  }
 
   if (!preferredPartsOfSpeech) {
     return fallbackMatch;
@@ -364,7 +470,7 @@ export function extractCandidateSeeds({
   const seen = new Set();
   const candidates = [];
 
-  for (const word of words) {
+  for (const [wordPosition, word] of words.entries()) {
     const normalized = normalizeToken(word.segment);
 
     if (!normalized || /[0-9]/.test(normalized)) {
@@ -378,10 +484,14 @@ export function extractCandidateSeeds({
       : false;
 
     const lemmaOptions = lemmaCandidates(word.segment);
+    const previousNormalized = normalizeToken(words[wordPosition - 1]?.segment ?? "");
+    const nextNormalized = normalizeToken(words[wordPosition + 1]?.segment ?? "");
     const { selectedLemma, matchedEntries } = selectLexiconMatchesWithContext(
       word.segment,
       lemmaOptions,
-      lexiconIndex
+      lexiconIndex,
+      previousNormalized,
+      nextNormalized
     );
     const matchedLevels = unique(matchedEntries.map((entry) => entry.cefr));
     const lexicalCefr = lowestCefr(matchedLevels);
