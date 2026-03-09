@@ -109,6 +109,38 @@ const OBJECT_STARTERS = new Set([
   "your"
 ]);
 
+const GERUND_TRIGGER_VERBS = new Set([
+  "avoid",
+  "begin",
+  "continue",
+  "consider",
+  "enjoy",
+  "finish",
+  "focus",
+  "imagine",
+  "keep",
+  "like",
+  "love",
+  "prefer",
+  "practice",
+  "recommend",
+  "start",
+  "stop",
+  "suggest"
+]);
+
+const ING_ADVERBIAL_FOLLOWERS = new Set([
+  "alone",
+  "apart",
+  "away",
+  "back",
+  "here",
+  "independently",
+  "outside",
+  "there",
+  "together"
+]);
+
 const IRREGULAR_LEMMAS = Object.freeze({
   better: "good",
   best: "good",
@@ -287,7 +319,7 @@ function hasCompatiblePartOfSpeech(entries, preferredPartsOfSpeech) {
   return entries.some((entry) => entry.partsOfSpeech.some((part) => preferredPartsOfSpeech.has(part)));
 }
 
-function shouldPreferVerbLemmaForIng(surface, previousNormalized, nextNormalized) {
+function shouldPreferVerbLemmaForIng(surface, previousNormalized, nextNormalized, previousLemmaOptions = []) {
   const normalized = normalizeToken(surface);
 
   if (!normalized.endsWith("ing") || normalized.length <= 4) {
@@ -302,6 +334,14 @@ function shouldPreferVerbLemmaForIng(surface, previousNormalized, nextNormalized
     return true;
   }
 
+  if (PREPOSITIONS.has(nextNormalized) || ING_ADVERBIAL_FOLLOWERS.has(nextNormalized) || /ly$/.test(nextNormalized)) {
+    return true;
+  }
+
+  if (previousLemmaOptions.some((option) => GERUND_TRIGGER_VERBS.has(option))) {
+    return true;
+  }
+
   return PREPOSITIONS.has(previousNormalized) && OBJECT_STARTERS.has(nextNormalized);
 }
 
@@ -310,12 +350,13 @@ function selectLexiconMatchesWithContext(
   lemmaOptions,
   lexiconIndex,
   previousNormalized = "",
-  nextNormalized = ""
+  nextNormalized = "",
+  previousLemmaOptions = []
 ) {
   const preferredPartsOfSpeech = inferPreferredPartsOfSpeech(surface);
   const fallbackMatch = selectLexiconMatches(lemmaOptions, lexiconIndex);
 
-  if (shouldPreferVerbLemmaForIng(surface, previousNormalized, nextNormalized)) {
+  if (shouldPreferVerbLemmaForIng(surface, previousNormalized, nextNormalized, previousLemmaOptions)) {
     for (const option of lemmaOptions) {
       if (option === normalizeToken(surface)) {
         continue;
@@ -486,12 +527,14 @@ export function extractCandidateSeeds({
     const lemmaOptions = lemmaCandidates(word.segment);
     const previousNormalized = normalizeToken(words[wordPosition - 1]?.segment ?? "");
     const nextNormalized = normalizeToken(words[wordPosition + 1]?.segment ?? "");
+    const previousLemmaOptions = lemmaCandidates(words[wordPosition - 1]?.segment ?? "");
     const { selectedLemma, matchedEntries } = selectLexiconMatchesWithContext(
       word.segment,
       lemmaOptions,
       lexiconIndex,
       previousNormalized,
-      nextNormalized
+      nextNormalized,
+      previousLemmaOptions
     );
     const matchedLevels = unique(matchedEntries.map((entry) => entry.cefr));
     const lexicalCefr = lowestCefr(matchedLevels);

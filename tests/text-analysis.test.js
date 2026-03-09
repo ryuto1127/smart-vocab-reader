@@ -109,6 +109,26 @@ test("extractCandidateSeeds treats verbal -ing forms like living a lifestyle as 
   assert.ok(!result.candidates.some((candidate) => candidate.surface.toLowerCase() === "living"));
 });
 
+test("extractCandidateSeeds treats living alone as a verb use of live", () => {
+  const result = extractCandidateSeeds({
+    text: "The number of elderly people living alone continues to rise.",
+    threshold: "B1",
+    lexiconIndex
+  });
+
+  assert.ok(!result.candidates.some((candidate) => candidate.surface.toLowerCase() === "living"));
+});
+
+test("extractCandidateSeeds treats enjoys living in as a verb use of live", () => {
+  const result = extractCandidateSeeds({
+    text: "She enjoys living in the countryside.",
+    threshold: "B1",
+    lexiconIndex
+  });
+
+  assert.ok(!result.candidates.some((candidate) => candidate.surface.toLowerCase() === "living"));
+});
+
 test("extractCandidateSeeds keeps true B1 noun uses like cost of living", () => {
   const result = extractCandidateSeeds({
     text: "The cost of living is high in the city.",
