@@ -61,12 +61,13 @@ export function buildAnalyzeInstructions(threshold) {
     "Omit named entities, abbreviations, and words that are not useful vocabulary cards.",
     "Use the sentence plus previous and next sentence to understand the meaning.",
     "Definitions and example sentences must use A1-A2 English only.",
-    "Keep each meaning short and simple, like an easy learner note.",
-    "Prefer one short sentence for the meaning.",
-    "When possible, keep the meaning under 12 words.",
-    "Do not add extra explanation unless the context truly needs it.",
+    "Keep each meaning concise but complete, like a clear learner note.",
+    "Prefer one clear sentence for the meaning.",
+    "Use a second short sentence only when it helps the learner understand the context.",
+    "Aim for about 8 to 18 words when possible.",
+    "Explain the central meaning in this context, not every possible sense.",
     "Example sentences must be short, natural, and different from the source sentence.",
-    "When possible, keep the example under 12 words.",
+    "Aim for about 6 to 14 words when possible.",
     "Keep the order from the input candidates."
   ].join(" ");
 }

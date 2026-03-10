@@ -344,10 +344,13 @@
       .replaceAll("\"", "&quot;");
   }
 
+  function getRenderableCards(cards = state.currentCards) {
+    return cards.filter((card) => card.content_source !== "fallback");
+  }
+
   function cardMarkup(card) {
     const saveKey = getSaveKey(card);
     const isSaved = state.savedWordKeys.includes(saveKey);
-    const isFallbackCard = card.content_source === "fallback";
     const isLoadingCard = card.content_source === "loading";
     const meaningCopy = isLoadingCard ? "Loading meaning..." : card.definition_simple_en;
     const exampleCopy = isLoadingCard ? "Loading example..." : card.example_simple_en;
@@ -359,7 +362,6 @@
             <h3 class="word">${escapeHtml(card.surface)}</h3>
             <div class="meta-row">
               <p class="meta">${escapeHtml(card.lemma)} · ${escapeHtml(card.part_of_speech)}</p>
-              ${isFallbackCard ? `<span class="source-chip">Quick meaning</span>` : ""}
               ${isLoadingCard ? `<span class="source-chip" data-mode="loading">Loading</span>` : ""}
             </div>
           </div>
@@ -401,19 +403,7 @@
     } else if (status.kind === "message") {
       content = `<div class="status">${escapeHtml(status.message)}</div>`;
     } else {
-      const fallbackReason = state.currentMeta?.fallback_reason;
-      const fallbackCards = state.currentCards.filter((card) => card.content_source === "fallback");
-      const allCardsAreFallback = state.currentCards.length > 0 && fallbackCards.length === state.currentCards.length;
-      const showGlobalFallbackNotice = fallbackReason === "ai_not_configured"
-        || (fallbackReason && allCardsAreFallback);
-      const notice = showGlobalFallbackNotice
-        ? `<div class="notice">${escapeHtml(
-            fallbackReason === "ai_not_configured"
-              ? "AI meanings are not set up yet. These are quick fallback cards."
-              : "AI meanings could not load right now. These are quick fallback cards."
-          )}</div>`
-        : "";
-      content = notice + state.currentCards.map(cardMarkup).join("");
+      content = getRenderableCards().map(cardMarkup).join("");
     }
 
     state.shadowRoot.innerHTML = `
@@ -720,13 +710,15 @@
       return;
     }
 
-    state.currentCards = response.data.cards ?? [];
+    state.currentCards = getRenderableCards(response.data.cards ?? []);
     state.currentMeta = response.data.meta ?? null;
 
     if (!state.currentCards.length) {
       renderBubble({
         kind: "message",
-        message: "No words at or above your level in this selection."
+        message: state.currentMeta?.fallback_reason
+          ? "Could not load meanings for this selection. Please try again."
+          : "No words at or above your level in this selection."
       });
       return;
     }
