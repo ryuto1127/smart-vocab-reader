@@ -1,7 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 
 import { analyzeSelection, createAnalysisService } from "../backend/analysis-service.js";
+import { createLexiconIndex, extractCandidateSeeds } from "../shared/text-analysis.js";
+
+const lexiconEntries = JSON.parse(
+  await readFile(new URL("../data/cefr-lexicon.json", import.meta.url), "utf8")
+);
+const lexiconIndex = createLexiconIndex(lexiconEntries);
 
 test("analyzeSelection asks for a shorter selection when the text is too long", async () => {
   const longText = "astonishing ".repeat(600);
@@ -58,6 +65,7 @@ test("analyzeSelection includes words above the chosen threshold, not only exact
 test("analysis service keeps higher lexical CEFR instead of flattening everything to the threshold", async () => {
   const service = createAnalysisService({
     cache: new Map(),
+    cardCache: new Map(),
     env: {
       OPENAI_API_KEY: "test-key"
     },
@@ -105,13 +113,14 @@ Yakult Ladies are easy to spot in the community. In their blue uniforms with sig
 
   assert.equal(result.selection_too_long, false);
   assert.equal(result.meta.candidate_count, 24);
-  assert.equal(result.meta.batch_count, 2);
+  assert.equal(result.meta.batch_count, 3);
   assert.ok(result.cards.length > 0);
 });
 
 test("analysis service keeps higher-level lexicon words even when the AI omits them", async () => {
   const service = createAnalysisService({
     cache: new Map(),
+    cardCache: new Map(),
     env: {
       OPENAI_API_KEY: "test-key"
     },
@@ -148,6 +157,7 @@ test("analysis service retries missing AI cards once and recovers them when the 
   let batchIndex = 0;
   const service = createAnalysisService({
     cache: new Map(),
+    cardCache: new Map(),
     env: {
       OPENAI_API_KEY: "test-key"
     },
@@ -185,7 +195,7 @@ Yakult Ladies are easy to spot in the community. In their blue uniforms with sig
   assert.equal(result.meta.fallback_reason, null);
   assert.equal(result.meta.retry_attempted, true);
   assert.ok(result.meta.retry_candidate_count > 0);
-  assert.equal(batchIndex, 3);
+  assert.equal(batchIndex, 5);
   assert.ok(result.cards.every((card) => card.content_source === "ai"));
   assert.ok(result.cards.every((card) => card.definition_simple_en === "AI meaning loaded."));
 });
@@ -194,6 +204,7 @@ test("analysis service keeps successful AI batches when the retry still fails", 
   let batchIndex = 0;
   const service = createAnalysisService({
     cache: new Map(),
+    cardCache: new Map(),
     env: {
       OPENAI_API_KEY: "test-key"
     },
@@ -201,7 +212,7 @@ test("analysis service keeps successful AI batches when the retry still fails", 
     analyzeCandidatesWithAiImpl: async ({ candidates }) => {
       batchIndex += 1;
 
-      if (batchIndex === 2 || batchIndex === 3) {
+      if (batchIndex >= 2) {
         throw new Error("Timed out");
       }
 
@@ -231,9 +242,107 @@ Yakult Ladies are easy to spot in the community. In their blue uniforms with sig
   assert.equal(result.meta.fallback_reason, "ai_partial_results");
   assert.equal(result.meta.retry_attempted, true);
   assert.ok(result.meta.retry_candidate_count > 0);
-  assert.equal(batchIndex, 3);
+  assert.ok(batchIndex > 3);
   assert.ok(result.cards.some((card) => card.content_source === "ai"));
   assert.ok(result.cards.some((card) => card.content_source === "fallback"));
   assert.ok(result.cards.some((card) => card.definition_simple_en === "AI meaning loaded."));
   assert.ok(result.cards.some((card) => card.definition_simple_en === "Meaning could not load for this word right now."));
+});
+
+test("analysis service can hydrate only a requested subset of candidate keys", async () => {
+  const seeds = extractCandidateSeeds({
+    text: "The government moved to abolish the policy in accordance with the new framework.",
+    threshold: "B1",
+    lexiconIndex
+  });
+  const requestedKeys = seeds.candidates
+    .filter((candidate) => candidate.lemma === "abolish" || candidate.lemma === "framework")
+    .map((candidate) => candidate.sameContextKey);
+
+  const service = createAnalysisService({
+    cache: new Map(),
+    cardCache: new Map(),
+    env: {
+      OPENAI_API_KEY: "test-key"
+    },
+    isAiConfiguredImpl: () => true,
+    analyzeCandidatesWithAiImpl: async ({ candidates }) => ({
+      cards: candidates.map((candidate) => ({
+        same_context_key: candidate.sameContextKey,
+        surface: candidate.surface,
+        lemma: candidate.lemma,
+        cefr: candidate.lexicalCefr ?? "B1",
+        part_of_speech: candidate.partOfSpeechHints[0] ?? "word",
+        definition_simple_en: `Meaning for ${candidate.lemma}`,
+        example_simple_en: `Example for ${candidate.lemma}`
+      }))
+    })
+  });
+
+  const result = await service.analyzeSelection({
+    selectionText: "The government moved to abolish the policy in accordance with the new framework.",
+    threshold: "B1",
+    candidateKeys: requestedKeys
+  });
+
+  assert.equal(result.selection_too_long, false);
+  assert.deepEqual(
+    result.cards.map((card) => card.lemma),
+    ["abolish", "framework"]
+  );
+});
+
+test("analysis service reuses per-card cache across subset hydration requests", async () => {
+  let aiCalls = 0;
+  const cardCache = new Map();
+  const service = createAnalysisService({
+    cache: new Map(),
+    cardCache,
+    env: {
+      OPENAI_API_KEY: "test-key"
+    },
+    isAiConfiguredImpl: () => true,
+    analyzeCandidatesWithAiImpl: async ({ candidates }) => {
+      aiCalls += 1;
+
+      return {
+        cards: candidates.map((candidate) => ({
+          same_context_key: candidate.sameContextKey,
+          surface: candidate.surface,
+          lemma: candidate.lemma,
+          cefr: candidate.lexicalCefr ?? "B1",
+          part_of_speech: candidate.partOfSpeechHints[0] ?? "word",
+          definition_simple_en: `Meaning for ${candidate.lemma}`,
+          example_simple_en: `Example for ${candidate.lemma}`
+        }))
+      };
+    }
+  });
+
+  const seeds = extractCandidateSeeds({
+    text: "The government moved to abolish the policy in accordance with the new framework.",
+    threshold: "B1",
+    lexiconIndex
+  });
+  const abolishKey = seeds.candidates.find((candidate) => candidate.lemma === "abolish")?.sameContextKey;
+  const frameworkKey = seeds.candidates.find((candidate) => candidate.lemma === "framework")?.sameContextKey;
+
+  await service.analyzeSelection({
+    selectionText: "The government moved to abolish the policy in accordance with the new framework.",
+    threshold: "B1",
+    candidateKeys: [abolishKey]
+  });
+
+  const result = await service.analyzeSelection({
+    selectionText: "The government moved to abolish the policy in accordance with the new framework.",
+    threshold: "B1",
+    candidateKeys: [abolishKey, frameworkKey]
+  });
+
+  assert.equal(aiCalls, 2);
+  assert.equal(result.meta.card_cache_hits, 1);
+  assert.deepEqual(
+    result.cards.map((card) => card.lemma),
+    ["abolish", "framework"]
+  );
 });

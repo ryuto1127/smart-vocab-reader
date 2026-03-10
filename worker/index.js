@@ -80,7 +80,8 @@ export default {
 
         const result = await analysisService.analyzeSelection({
           selectionText: body.selectionText,
-          threshold: body.threshold
+          threshold: body.threshold,
+          candidateKeys: Array.isArray(body.candidateKeys) ? body.candidateKeys : null
         });
 
         return jsonResponse(200, result);

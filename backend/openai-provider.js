@@ -6,7 +6,8 @@ import {
 } from "../shared/ai-schema.js";
 
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
-const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
+const DEFAULT_ANALYZE_MODEL = "gpt-4.1-mini";
+const DEFAULT_DETAILS_MODEL = "gpt-4o-mini";
 const DEFAULT_OPENAI_TIMEOUT_MS = 26000;
 
 function getDefaultEnv() {
@@ -82,6 +83,7 @@ async function callOpenAiJson({
   instructions,
   schemaName,
   schema,
+  model,
   env = getDefaultEnv(),
   fetchImpl,
   timeoutMs = DEFAULT_OPENAI_TIMEOUT_MS,
@@ -104,7 +106,7 @@ async function callOpenAiJson({
         Authorization: `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: getStringValue(env, "OPENAI_MODEL", DEFAULT_OPENAI_MODEL),
+        model,
         store: false,
         instructions,
         input: JSON.stringify(input),
@@ -146,7 +148,14 @@ export async function analyzeCandidatesWithAi(
   { threshold, candidates },
   runtime = {}
 ) {
+  const env = runtime.env ?? getDefaultEnv();
+
   return callOpenAiJson({
+    model: getStringValue(
+      env,
+      "OPENAI_ANALYZE_MODEL",
+      getStringValue(env, "OPENAI_MODEL", DEFAULT_ANALYZE_MODEL)
+    ),
     instructions: buildAnalyzeInstructions(threshold),
     input: {
       threshold,
@@ -154,10 +163,10 @@ export async function analyzeCandidatesWithAi(
     },
     schemaName: "cefr_vocabulary_analysis",
     schema: ANALYZE_RESPONSE_SCHEMA,
-    env: runtime.env,
+    env,
     fetchImpl: runtime.fetchImpl,
     timeoutMs: runtime.timeoutMs,
-    maxOutputTokens: 2600
+    maxOutputTokens: 1400
   });
 }
 
@@ -165,7 +174,14 @@ export async function loadWordDetailsWithAi(
   { surface, lemma, sentence, previousSentence, nextSentence },
   runtime = {}
 ) {
+  const env = runtime.env ?? getDefaultEnv();
+
   return callOpenAiJson({
+    model: getStringValue(
+      env,
+      "OPENAI_DETAILS_MODEL",
+      getStringValue(env, "OPENAI_MODEL", DEFAULT_DETAILS_MODEL)
+    ),
     instructions: buildDetailsInstructions(),
     input: {
       surface,
@@ -176,7 +192,7 @@ export async function loadWordDetailsWithAi(
     },
     schemaName: "cefr_vocabulary_details",
     schema: DETAILS_RESPONSE_SCHEMA,
-    env: runtime.env,
+    env,
     fetchImpl: runtime.fetchImpl,
     timeoutMs: runtime.timeoutMs
   });

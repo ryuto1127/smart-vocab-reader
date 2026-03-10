@@ -1,4 +1,6 @@
 (function () {
+  const INITIAL_HYDRATION_CARD_COUNT = 6;
+  const BACKGROUND_HYDRATION_CARD_COUNT = 8;
   const STYLE_TEXT = `
     :host {
       all: initial;
@@ -348,6 +350,35 @@
     return cards.filter((card) => card.content_source !== "fallback");
   }
 
+  function mergeHydratedBatch(batchKeys, hydratedCards) {
+    const hydratedByKey = new Map(
+      hydratedCards.map((card) => [card.same_context_key, card])
+    );
+    const keySet = new Set(batchKeys);
+
+    state.currentCards = state.currentCards
+      .map((card) => {
+        if (!keySet.has(card.same_context_key)) {
+          return card;
+        }
+
+        return hydratedByKey.get(card.same_context_key) ?? null;
+      })
+      .filter(Boolean);
+  }
+
+  function renderHydrationOutcome() {
+    if (!state.currentCards.length) {
+      renderBubble({
+        kind: "message",
+        message: "Could not load meanings for this selection. Please try again."
+      });
+      return;
+    }
+
+    renderBubble({ kind: "results" });
+  }
+
   function cardMarkup(card) {
     const saveKey = getSaveKey(card);
     const isSaved = state.savedWordKeys.includes(saveKey);
@@ -646,6 +677,53 @@
     renderBubble({ kind: "results" });
   }
 
+  async function hydrateCardBatch(selectionText, runId, batchKeys) {
+    const response = await sendMessage({
+      type: "request-analysis",
+      selectionText,
+      candidateKeys: batchKeys
+    }).catch(() => ({ ok: false }));
+
+    if (runId !== state.currentRunId) {
+      return false;
+    }
+
+    if (!response?.ok || response.data.selection_too_long) {
+      mergeHydratedBatch(batchKeys, []);
+      renderHydrationOutcome();
+      return false;
+    }
+
+    mergeHydratedBatch(batchKeys, getRenderableCards(response.data.cards ?? []));
+    state.currentMeta = response.data.meta ?? state.currentMeta;
+    renderHydrationOutcome();
+    return true;
+  }
+
+  async function hydrateSelectionCards(selectionText, runId) {
+    const cardKeys = state.currentCards.map((card) => card.same_context_key);
+
+    if (!cardKeys.length) {
+      return;
+    }
+
+    const firstBatch = cardKeys.slice(0, INITIAL_HYDRATION_CARD_COUNT);
+    const remainingKeys = cardKeys.slice(INITIAL_HYDRATION_CARD_COUNT);
+
+    if (firstBatch.length) {
+      await hydrateCardBatch(selectionText, runId, firstBatch);
+    }
+
+    for (let index = 0; index < remainingKeys.length; index += BACKGROUND_HYDRATION_CARD_COUNT) {
+      if (runId !== state.currentRunId) {
+        return;
+      }
+
+      const batchKeys = remainingKeys.slice(index, index + BACKGROUND_HYDRATION_CARD_COUNT);
+      await hydrateCardBatch(selectionText, runId, batchKeys);
+    }
+  }
+
   async function triggerAnalysis() {
     const selection = getSelectionInfo();
 
@@ -660,11 +738,6 @@
 
     const previewPromise = sendMessage({
       type: "request-analysis-preview",
-      selectionText: selection.text
-    }).catch(() => ({ ok: false }));
-
-    const responsePromise = sendMessage({
-      type: "request-analysis",
       selectionText: selection.text
     }).catch(() => ({ ok: false }));
 
@@ -688,10 +761,15 @@
 
       if (state.currentCards.length) {
         renderBubble({ kind: "results" });
+        void hydrateSelectionCards(selection.text, runId);
+        return;
       }
     }
 
-    const response = await responsePromise;
+    const response = await sendMessage({
+      type: "request-analysis",
+      selectionText: selection.text
+    }).catch(() => ({ ok: false }));
 
     if (runId !== state.currentRunId) {
       return;

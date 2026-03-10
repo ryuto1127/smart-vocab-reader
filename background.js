@@ -125,7 +125,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         const settings = await getSettings();
         const data = await postBackend("/api/analyze", {
           selectionText: message.selectionText,
-          threshold: settings.cefrLevel
+          threshold: settings.cefrLevel,
+          candidateKeys: Array.isArray(message.candidateKeys) ? message.candidateKeys : undefined
         });
 
         sendResponse({

@@ -13,10 +13,11 @@ const lexiconIndex = createLexiconIndex(lexiconEntries);
 const CACHE_TTL_MS = 1000 * 60 * 60 * 6;
 const MAX_SELECTION_WORDS = 550;
 const MAX_SELECTION_CHARACTERS = 3600;
-const MAX_AI_CANDIDATES_PER_REQUEST = 20;
-const RETRY_AI_CANDIDATES_PER_REQUEST = 8;
+const MAX_AI_CANDIDATES_PER_REQUEST = 8;
+const RETRY_AI_CANDIDATES_PER_REQUEST = 4;
 const MAX_AI_CANDIDATES_TOTAL = 48;
 const defaultAnalysisCache = new Map();
+const defaultCardCache = new Map();
 
 function getDefaultEnv() {
   if (typeof process !== "undefined" && process?.env) {
@@ -37,6 +38,23 @@ function sanitizeCard(card) {
     example_simple_en: String(card.example_simple_en ?? "").trim(),
     content_source: String(card.content_source ?? "ai").trim() || "ai"
   };
+}
+
+function normalizeCacheText(value) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function buildCardCacheKey(candidate, threshold) {
+  return JSON.stringify({
+    threshold,
+    lemma: normalizeCacheText(candidate.lemma),
+    sentence: normalizeCacheText(candidate.sentence),
+    previous_sentence: normalizeCacheText(candidate.previousSentence),
+    next_sentence: normalizeCacheText(candidate.nextSentence)
+  });
 }
 
 function buildFallbackExample(seed) {
@@ -135,6 +153,21 @@ function mergeCards(candidates, cards, threshold, fallbackReasonForMissing = nul
     .filter(Boolean);
 }
 
+function buildCandidateCard(candidate, card) {
+  return {
+    ...card,
+    same_context_key: candidate.sameContextKey,
+    surface: candidate.surface,
+    lemma: candidate.lemma,
+    cefr: resolveFinalCefr(candidate, card),
+    sentence: candidate.sentence,
+    previous_sentence: candidate.previousSentence,
+    next_sentence: candidate.nextSentence,
+    details_loaded: false,
+    content_source: card.content_source || "ai"
+  };
+}
+
 function filterCardsByThreshold(cards, threshold) {
   return cards.filter((card) => meetsThreshold(card.cefr, threshold));
 }
@@ -177,6 +210,7 @@ function getMissingCandidates(candidates, cards) {
 
 export function createAnalysisService(runtime = {}) {
   const cache = runtime.cache ?? defaultAnalysisCache;
+  const cardCache = runtime.cardCache ?? defaultCardCache;
   const now = runtime.now ?? (() => Date.now());
   const env = runtime.env ?? getDefaultEnv();
   const fetchImpl = runtime.fetchImpl;
@@ -207,8 +241,52 @@ export function createAnalysisService(runtime = {}) {
     });
   }
 
+  function getCardCacheValue(key) {
+    const cached = cardCache.get(key);
+
+    if (!cached) {
+      return null;
+    }
+
+    if (now() - cached.createdAt > CACHE_TTL_MS) {
+      cardCache.delete(key);
+      return null;
+    }
+
+    return cached.value;
+  }
+
+  function setCardCacheValue(key, value) {
+    cardCache.set(key, {
+      createdAt: now(),
+      value
+    });
+  }
+
   async function analyzeCandidatesOnce(candidates, threshold, chunkSize) {
-    const candidateBatches = chunkCandidates(candidates, chunkSize);
+    const cachedCards = [];
+    const uncachedCandidates = [];
+
+    for (const candidate of candidates) {
+      const cachedCard = getCardCacheValue(buildCardCacheKey(candidate, threshold));
+
+      if (cachedCard) {
+        cachedCards.push(buildCandidateCard(candidate, sanitizeCard(cachedCard)));
+      } else {
+        uncachedCandidates.push(candidate);
+      }
+    }
+
+    if (!uncachedCandidates.length) {
+      return {
+        cards: cachedCards,
+        successfulBatchCount: 0,
+        batchCount: 0,
+        cacheHitCount: cachedCards.length
+      };
+    }
+
+    const candidateBatches = chunkCandidates(uncachedCandidates, chunkSize);
     const settledResponses = await Promise.allSettled(
       candidateBatches.map((batch) => analyzeCandidatesWithAiImpl(
         {
@@ -227,15 +305,34 @@ export function createAnalysisService(runtime = {}) {
       .filter((response) => response.status === "fulfilled")
       .map((response) => response.value);
 
+    const aiCards = successfulResponses.flatMap((response) => response.cards ?? []);
+    const byKey = new Map(aiCards.map((card) => [sanitizeCard(card).same_context_key, sanitizeCard(card)]));
+
+    const resolvedAiCards = uncachedCandidates.flatMap((candidate) => {
+      const card = byKey.get(candidate.sameContextKey);
+
+      if (!card) {
+        return [];
+      }
+
+      const resolvedCard = buildCandidateCard(candidate, card);
+      setCardCacheValue(buildCardCacheKey(candidate, threshold), resolvedCard);
+      return [resolvedCard];
+    });
+
     return {
-      cards: successfulResponses.flatMap((response) => response.cards ?? []),
+      cards: [...cachedCards, ...resolvedAiCards],
       successfulBatchCount: successfulResponses.length,
-      batchCount: candidateBatches.length
+      batchCount: candidateBatches.length,
+      cacheHitCount: cachedCards.length
     };
   }
 
-  async function analyzeSelection({ selectionText, threshold }) {
-    const cacheKey = JSON.stringify({ selectionText, threshold });
+  async function analyzeSelection({ selectionText, threshold, candidateKeys = null }) {
+    const normalizedCandidateKeys = Array.isArray(candidateKeys)
+      ? [...new Set(candidateKeys.map((key) => String(key ?? "").trim()).filter(Boolean))].sort()
+      : null;
+    const cacheKey = JSON.stringify({ selectionText, threshold, candidateKeys: normalizedCandidateKeys });
     const cached = getCacheValue(cacheKey);
 
     if (cached) {
@@ -265,14 +362,27 @@ export function createAnalysisService(runtime = {}) {
       };
     }
 
-    if (localAnalysis.candidates.length === 0) {
+    const scopedCandidates = normalizedCandidateKeys?.length
+      ? localAnalysis.candidates.filter((candidate) => normalizedCandidateKeys.includes(candidate.sameContextKey))
+      : localAnalysis.candidates;
+
+    if (scopedCandidates.length === 0) {
       return {
         selection_too_long: false,
-        cards: []
+        cards: [],
+        meta: {
+          used_ai: false,
+          candidate_count: 0,
+          batch_count: 0,
+          fallback_reason: null,
+          retry_attempted: false,
+          retry_candidate_count: 0,
+          card_cache_hits: 0
+        }
       };
     }
 
-    if (localAnalysis.candidates.length > MAX_AI_CANDIDATES_TOTAL) {
+    if (scopedCandidates.length > MAX_AI_CANDIDATES_TOTAL) {
       return {
         selection_too_long: true,
         message: "There are too many difficult words in this selection. Try a shorter text or choose a higher CEFR level.",
@@ -285,18 +395,20 @@ export function createAnalysisService(runtime = {}) {
     let fallbackReason = null;
     let retryAttempted = false;
     let retryCandidateCount = 0;
+    let cardCacheHits = 0;
 
     if (isAiConfiguredImpl(env)) {
       try {
         const firstPass = await analyzeCandidatesOnce(
-          localAnalysis.candidates,
+          scopedCandidates,
           threshold,
           MAX_AI_CANDIDATES_PER_REQUEST
         );
         let mergedResponseCards = firstPass.cards;
         let successfulBatchCount = firstPass.successfulBatchCount;
+        cardCacheHits += firstPass.cacheHitCount;
         const missingCandidatesAfterFirstPass = getMissingCandidates(
-          localAnalysis.candidates,
+          scopedCandidates,
           mergedResponseCards
         );
 
@@ -310,29 +422,30 @@ export function createAnalysisService(runtime = {}) {
           );
           mergedResponseCards = mergeAiCards(mergedResponseCards, retryPass.cards);
           successfulBatchCount += retryPass.successfulBatchCount;
+          cardCacheHits += retryPass.cacheHitCount;
         }
 
-        if (successfulBatchCount === 0) {
+        if (successfulBatchCount === 0 && cardCacheHits === 0) {
           throw new Error("All AI batches failed");
         }
 
-        const unresolvedCandidates = getMissingCandidates(localAnalysis.candidates, mergedResponseCards);
+        const unresolvedCandidates = getMissingCandidates(scopedCandidates, mergedResponseCards);
         fallbackReason = unresolvedCandidates.length
           ? "ai_partial_results"
           : null;
 
         cards = filterCardsByThreshold(
-          mergeCards(localAnalysis.candidates, mergedResponseCards, threshold, fallbackReason),
+          mergeCards(scopedCandidates, mergedResponseCards, threshold, fallbackReason),
           threshold
         );
         usedAi = true;
       } catch {
         fallbackReason = "ai_temporarily_unavailable";
-        cards = localAnalysis.candidates.map((candidate) => buildOfflineCard(candidate, threshold, fallbackReason));
+        cards = scopedCandidates.map((candidate) => buildOfflineCard(candidate, threshold, fallbackReason));
       }
     } else {
       fallbackReason = "ai_not_configured";
-      cards = localAnalysis.candidates.map((candidate) => buildOfflineCard(candidate, threshold, fallbackReason));
+      cards = scopedCandidates.map((candidate) => buildOfflineCard(candidate, threshold, fallbackReason));
     }
 
     const result = {
@@ -340,11 +453,12 @@ export function createAnalysisService(runtime = {}) {
       cards,
       meta: {
         used_ai: usedAi,
-        candidate_count: localAnalysis.candidates.length,
-        batch_count: Math.ceil(localAnalysis.candidates.length / MAX_AI_CANDIDATES_PER_REQUEST),
+        candidate_count: scopedCandidates.length,
+        batch_count: Math.ceil(scopedCandidates.length / MAX_AI_CANDIDATES_PER_REQUEST),
         fallback_reason: fallbackReason,
         retry_attempted: retryAttempted,
-        retry_candidate_count: retryCandidateCount
+        retry_candidate_count: retryCandidateCount,
+        card_cache_hits: cardCacheHits
       }
     };
 
