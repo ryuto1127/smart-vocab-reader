@@ -136,6 +136,11 @@
       text-transform: uppercase;
     }
 
+    .source-chip[data-mode="loading"] {
+      background: rgba(73, 106, 181, 0.12);
+      color: #496ab5;
+    }
+
     .card-panels {
       display: grid;
       gap: 10px;
@@ -343,6 +348,9 @@
     const saveKey = getSaveKey(card);
     const isSaved = state.savedWordKeys.includes(saveKey);
     const isFallbackCard = card.content_source === "fallback";
+    const isLoadingCard = card.content_source === "loading";
+    const meaningCopy = isLoadingCard ? "Loading meaning..." : card.definition_simple_en;
+    const exampleCopy = isLoadingCard ? "Loading example..." : card.example_simple_en;
 
     return `
       <article class="card" data-card-key="${escapeHtml(card.same_context_key)}">
@@ -352,6 +360,7 @@
             <div class="meta-row">
               <p class="meta">${escapeHtml(card.lemma)} · ${escapeHtml(card.part_of_speech)}</p>
               ${isFallbackCard ? `<span class="source-chip">Quick meaning</span>` : ""}
+              ${isLoadingCard ? `<span class="source-chip" data-mode="loading">Loading</span>` : ""}
             </div>
           </div>
           <span class="badge">${escapeHtml(card.cefr)}</span>
@@ -359,16 +368,16 @@
         <div class="card-panels">
           <section class="card-panel">
             <p class="section-label">Meaning</p>
-            <p class="meaning-copy">${escapeHtml(card.definition_simple_en)}</p>
+            <p class="meaning-copy">${escapeHtml(meaningCopy)}</p>
           </section>
           <section class="card-panel card-panel-example">
             <p class="section-label">Example</p>
-            <p class="example-copy">${escapeHtml(card.example_simple_en)}</p>
+            <p class="example-copy">${escapeHtml(exampleCopy)}</p>
           </section>
         </div>
         <div class="actions">
-          <button class="primary" type="button" data-action="save" data-card-key="${escapeHtml(card.same_context_key)}">${isSaved ? "Unsave word" : "Save word"}</button>
-          <button class="secondary" type="button" data-action="details" data-card-key="${escapeHtml(card.same_context_key)}" ${card.details_loaded ? "disabled" : ""}>${card.details_loaded ? "More loaded" : "More"}</button>
+          <button class="primary" type="button" data-action="save" data-card-key="${escapeHtml(card.same_context_key)}" ${isLoadingCard ? "disabled" : ""}>${isSaved ? "Unsave word" : "Save word"}</button>
+          <button class="secondary" type="button" data-action="details" data-card-key="${escapeHtml(card.same_context_key)}" ${(card.details_loaded || isLoadingCard) ? "disabled" : ""}>${card.details_loaded ? "More loaded" : "More"}</button>
         </div>
         ${card.details_loaded ? `
           <div class="details">
@@ -551,6 +560,12 @@
         return;
       }
 
+      if (card.content_source === "loading") {
+        button.disabled = true;
+        button.textContent = "Loading…";
+        return;
+      }
+
       const isSaved = state.savedWordKeys.includes(getSaveKey(card));
       button.disabled = false;
       button.textContent = isSaved ? "Unsave word" : "Save word";
@@ -566,7 +581,7 @@
     const key = button.dataset.cardKey;
     const card = state.currentCards.find((item) => item.same_context_key === key);
 
-    if (!card) {
+    if (!card || card.content_source === "loading") {
       return;
     }
 
@@ -653,10 +668,40 @@
     state.currentRange = selection.range;
     renderBubble({ kind: "loading" });
 
-    const response = await sendMessage({
+    const previewPromise = sendMessage({
+      type: "request-analysis-preview",
+      selectionText: selection.text
+    }).catch(() => ({ ok: false }));
+
+    const responsePromise = sendMessage({
       type: "request-analysis",
       selectionText: selection.text
     }).catch(() => ({ ok: false }));
+
+    const previewResponse = await previewPromise;
+
+    if (runId !== state.currentRunId) {
+      return;
+    }
+
+    if (previewResponse?.ok) {
+      if (previewResponse.data.selection_too_long) {
+        renderBubble({
+          kind: "message",
+          message: previewResponse.data.message || "Please select a shorter text."
+        });
+        return;
+      }
+
+      state.currentCards = previewResponse.data.cards ?? [];
+      state.currentMeta = previewResponse.data.meta ?? null;
+
+      if (state.currentCards.length) {
+        renderBubble({ kind: "results" });
+      }
+    }
+
+    const response = await responsePromise;
 
     if (runId !== state.currentRunId) {
       return;

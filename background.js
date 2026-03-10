@@ -6,17 +6,42 @@ import {
   saveWord,
   setSettings
 } from "./shared/storage.js";
+import { createLexiconIndex } from "./shared/text-analysis.js";
+import { createPreviewAnalysis } from "./shared/preview-analysis.js";
 
 const CONTEXT_MENU_ID = "cefr-reading-assistant-analyze-selection";
 const REQUEST_TIMEOUT_MS = Object.freeze({
   analyze: 32000,
   details: 24000
 });
+let previewLexiconIndexPromise = null;
 
 async function ensureDefaults() {
   const settings = await getSettings();
   await setSettings(settings);
 }
+
+async function getPreviewLexiconIndex() {
+  if (!previewLexiconIndexPromise) {
+    previewLexiconIndexPromise = fetch(chrome.runtime.getURL("data/cefr-lexicon.json"))
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Could not load local lexicon (${response.status})`);
+        }
+
+        return response.json();
+      })
+      .then((entries) => createLexiconIndex(entries))
+      .catch((error) => {
+        previewLexiconIndexPromise = null;
+        throw error;
+      });
+  }
+
+  return previewLexiconIndexPromise;
+}
+
+void getPreviewLexiconIndex().catch(() => {});
 
 async function ensureContextMenu() {
   await chrome.contextMenus.removeAll();
@@ -52,6 +77,7 @@ async function postBackend(path, payload) {
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   await ensureDefaults();
   await ensureContextMenu();
+  void getPreviewLexiconIndex().catch(() => {});
 
   if (reason === "install") {
     await chrome.tabs.create({
@@ -63,6 +89,7 @@ chrome.runtime.onInstalled.addListener(async ({ reason }) => {
 chrome.runtime.onStartup.addListener(async () => {
   await ensureDefaults();
   await ensureContextMenu();
+  void getPreviewLexiconIndex().catch(() => {});
 });
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
@@ -99,6 +126,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         const data = await postBackend("/api/analyze", {
           selectionText: message.selectionText,
           threshold: settings.cefrLevel
+        });
+
+        sendResponse({
+          ok: true,
+          data
+        });
+        return;
+      }
+
+      case "request-analysis-preview": {
+        const settings = await getSettings();
+        const lexiconIndex = await getPreviewLexiconIndex();
+        const data = createPreviewAnalysis({
+          selectionText: message.selectionText,
+          threshold: settings.cefrLevel,
+          lexiconIndex
         });
 
         sendResponse({

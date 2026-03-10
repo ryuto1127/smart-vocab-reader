@@ -22,7 +22,8 @@ const rootFiles = [
 const rootDirs = [
   "pages",
   "shared",
-  "assets"
+  "assets",
+  "data"
 ];
 
 async function ensureFileExists(relativePath) {
