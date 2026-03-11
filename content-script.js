@@ -322,6 +322,8 @@
     host.style.pointerEvents = "auto";
 
     const shadow = host.attachShadow({ mode: "open" });
+    shadow.addEventListener("mousedown", handleShadowMouseDown, true);
+    shadow.addEventListener("click", handleShadowClick);
     document.documentElement.appendChild(host);
 
     state.bubbleHost = host;
@@ -450,14 +452,6 @@
         <div class="content">${content}</div>
       </div>
     `;
-
-    state.shadowRoot.querySelector(".close-button").addEventListener("click", closeBubble);
-    state.shadowRoot.querySelectorAll("[data-action='save']").forEach((button) => {
-      button.addEventListener("click", onSaveCard);
-    });
-    state.shadowRoot.querySelectorAll("[data-action='details']").forEach((button) => {
-      button.addEventListener("click", onLoadDetails);
-    });
 
     positionBubble();
   }
@@ -593,12 +587,7 @@
     });
   }
 
-  async function onSaveCard(event) {
-    const button = event.currentTarget;
-    if (!(button instanceof HTMLButtonElement)) {
-      return;
-    }
-
+  async function onSaveCard(button) {
     const key = button.dataset.cardKey;
     const card = state.currentCards.find((item) => item.same_context_key === key);
 
@@ -638,12 +627,7 @@
     syncSaveButtons();
   }
 
-  async function onLoadDetails(event) {
-    const button = event.currentTarget;
-    if (!(button instanceof HTMLButtonElement)) {
-      return;
-    }
-
+  async function onLoadDetails(button) {
     const key = button.dataset.cardKey;
     const card = state.currentCards.find((item) => item.same_context_key === key);
 
@@ -802,6 +786,50 @@
     }
 
     renderBubble({ kind: "results" });
+  }
+
+  function getClosestInteractiveButton(target) {
+    if (!(target instanceof Element)) {
+      return null;
+    }
+
+    return target.closest("button");
+  }
+
+  function handleShadowMouseDown(event) {
+    const button = getClosestInteractiveButton(event.target);
+
+    if (!button) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function handleShadowClick(event) {
+    const button = getClosestInteractiveButton(event.target);
+
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (button.classList.contains("close-button")) {
+      closeBubble();
+      return;
+    }
+
+    if (button.dataset.action === "save") {
+      void onSaveCard(button);
+      return;
+    }
+
+    if (button.dataset.action === "details") {
+      void onLoadDetails(button);
+    }
   }
 
   function handleSelectionMouseUp(event) {

@@ -18,7 +18,9 @@ async function hydrate() {
   savedSummary.textContent = `${savedWords.length} saved ${savedWords.length === 1 ? "word" : "words"}`;
 }
 
-toggleButton.addEventListener("click", async () => {
+toggleButton.addEventListener("click", async (event) => {
+  event.preventDefault();
+  event.stopPropagation();
   const settings = await getSettings();
   const next = await setSettings({
     readingMode: !settings.readingMode

@@ -34,6 +34,7 @@ body {
 .hero,
 .panel {
   position: relative;
+  isolation: isolate;
   overflow: hidden;
   padding: 18px;
   border: 1px solid var(--line);
@@ -86,9 +87,13 @@ h1 {
 .secondary-button,
 .ghost-button,
 .field-control {
+  position: relative;
+  z-index: 1;
   width: 100%;
   border-radius: 999px;
   font: inherit;
+  pointer-events: auto;
+  touch-action: manipulation;
 }
 
 .toggle-button,
