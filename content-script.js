@@ -2,11 +2,17 @@
   const INITIAL_HYDRATION_CARD_COUNT = 6;
   const BACKGROUND_HYDRATION_CARD_COUNT = 8;
   const VALID_BUBBLE_PLACEMENTS = new Set([
-    "auto",
-    "right",
-    "left",
-    "below",
-    "bottom-left"
+    "normal",
+    "top-left",
+    "top-right",
+    "bottom-left",
+    "bottom-right"
+  ]);
+  const CORNER_BUBBLE_PLACEMENTS = new Set([
+    "top-left",
+    "top-right",
+    "bottom-left",
+    "bottom-right"
   ]);
   const STYLE_TEXT = `
     :host {
@@ -254,7 +260,7 @@
     settings: {
       readingMode: false,
       cefrLevel: "B1",
-      bubblePlacement: "auto"
+      bubblePlacement: "normal"
     },
     savedWordKeys: [],
     bubbleHost: null,
@@ -508,10 +514,13 @@
     const viewportLeft = padding;
     const viewportRight = window.innerWidth - bubbleRect.width - padding;
     const viewportBottom = window.innerHeight - bubbleRect.height - padding;
+    const topLeft = makeViewportCandidate(viewportTop, viewportLeft, 12);
+    const topRight = makeViewportCandidate(viewportTop, viewportRight, 13);
     const bottomLeft = makeViewportCandidate(viewportBottom, viewportLeft, 14);
+    const bottomRight = makeViewportCandidate(viewportBottom, viewportRight, 15);
 
     return {
-      auto: [
+      normal: [
         rightTop,
         rightMiddle,
         leftTop,
@@ -525,10 +534,10 @@
         aboveCenter,
         aboveRight
       ],
-      right: [rightTop, rightMiddle, rightBottom, belowCenter, leftMiddle],
-      left: [leftTop, leftMiddle, leftBottom, belowCenter, rightMiddle],
-      below: [belowLeft, belowCenter, belowRight, rightMiddle, leftMiddle],
-      "bottom-left": [bottomLeft]
+      "top-left": [topLeft],
+      "top-right": [topRight],
+      "bottom-left": [bottomLeft],
+      "bottom-right": [bottomRight]
     };
   }
 
@@ -549,8 +558,11 @@
       return;
     }
 
+    const placementMode = VALID_BUBBLE_PLACEMENTS.has(state.settings.bubblePlacement)
+      ? state.settings.bubblePlacement
+      : "normal";
     const rect = state.currentRange?.getBoundingClientRect();
-    if (!rect) {
+    if (!rect && placementMode === "normal") {
       return;
     }
 
@@ -562,6 +574,37 @@
     const bubbleRect = bubble.getBoundingClientRect();
     const padding = 12;
     const gap = 16;
+    const cornerInset = 0;
+
+    if (CORNER_BUBBLE_PLACEMENTS.has(placementMode)) {
+      state.bubbleHost.style.top = "";
+      state.bubbleHost.style.right = "";
+      state.bubbleHost.style.bottom = "";
+      state.bubbleHost.style.left = "";
+
+      if (placementMode === "top-left") {
+        state.bubbleHost.style.top = `${cornerInset}px`;
+        state.bubbleHost.style.left = `${cornerInset}px`;
+        return;
+      }
+
+      if (placementMode === "top-right") {
+        state.bubbleHost.style.top = `${cornerInset}px`;
+        state.bubbleHost.style.left = `${Math.max(cornerInset, window.innerWidth - bubbleRect.width - cornerInset)}px`;
+        return;
+      }
+
+      if (placementMode === "bottom-left") {
+        state.bubbleHost.style.top = `${Math.max(cornerInset, window.innerHeight - bubbleRect.height - cornerInset)}px`;
+        state.bubbleHost.style.left = `${cornerInset}px`;
+        return;
+      }
+
+      state.bubbleHost.style.top = `${Math.max(cornerInset, window.innerHeight - bubbleRect.height - cornerInset)}px`;
+      state.bubbleHost.style.left = `${Math.max(cornerInset, window.innerWidth - bubbleRect.width - cornerInset)}px`;
+      return;
+    }
+
     const maxTop = Math.max(padding, window.innerHeight - bubbleRect.height - padding);
     const maxLeft = Math.max(padding, window.innerWidth - bubbleRect.width - padding);
     const selectionRect = {
@@ -570,11 +613,8 @@
       bottom: rect.bottom,
       left: rect.left
     };
-    const placementMode = VALID_BUBBLE_PLACEMENTS.has(state.settings.bubblePlacement)
-      ? state.settings.bubblePlacement
-      : "auto";
     const candidatesByPlacement = buildPlacementCandidates(rect, bubbleRect, padding, gap);
-    const candidates = candidatesByPlacement[placementMode] ?? candidatesByPlacement.auto;
+    const candidates = candidatesByPlacement[placementMode] ?? candidatesByPlacement.normal;
 
     const bestCandidate = candidates
       .map((candidate) => {
@@ -617,6 +657,8 @@
       return;
     }
 
+    state.bubbleHost.style.right = "";
+    state.bubbleHost.style.bottom = "";
     state.bubbleHost.style.top = `${bestCandidate.top}px`;
     state.bubbleHost.style.left = `${bestCandidate.left}px`;
   }

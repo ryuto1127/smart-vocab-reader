@@ -9,16 +9,16 @@ export const DEFAULT_SETTINGS = Object.freeze({
   cefrLevel: "B1",
   readingMode: false,
   onboardingCompleted: false,
-  bubblePlacement: "auto",
+  bubblePlacement: "normal",
   backendBaseUrl: DEFAULT_BACKEND_BASE_URL
 });
 
 const VALID_BUBBLE_PLACEMENTS = new Set([
-  "auto",
-  "right",
-  "left",
-  "below",
-  "bottom-left"
+  "normal",
+  "top-left",
+  "top-right",
+  "bottom-left",
+  "bottom-right"
 ]);
 
 const PLACEHOLDER_DEFINITIONS = new Set([
@@ -152,7 +152,9 @@ export async function getSettings() {
     ...storedSettings,
     bubblePlacement: VALID_BUBBLE_PLACEMENTS.has(storedSettings.bubblePlacement)
       ? storedSettings.bubblePlacement
-      : DEFAULT_SETTINGS.bubblePlacement,
+      : storedSettings.bubblePlacement === "auto"
+        ? "normal"
+        : DEFAULT_SETTINGS.bubblePlacement,
     backendBaseUrl: migratedBackendBaseUrl ?? DEFAULT_BACKEND_BASE_URL
   };
 }
