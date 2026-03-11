@@ -223,6 +223,32 @@ function stripPossessive(token) {
   return token;
 }
 
+function guessIngBaseLemma(normalized) {
+  if (!normalized.endsWith("ing") || normalized.length <= 4) {
+    return normalized;
+  }
+
+  const stem = normalized.slice(0, -3);
+
+  if (/([b-df-hj-np-tv-z])\1$/.test(stem)) {
+    return stem.slice(0, -1);
+  }
+
+  if (stem.endsWith("v")) {
+    return `${stem}e`;
+  }
+
+  if (stem.length <= 3) {
+    return `${stem}e`;
+  }
+
+  if (/(?:ak|it|iv|iz|us)$/.test(stem)) {
+    return `${stem}e`;
+  }
+
+  return stem;
+}
+
 export function lemmaCandidates(surface) {
   const normalized = normalizeToken(surface);
 
@@ -247,7 +273,8 @@ export function lemmaCandidates(surface) {
 
   if (normalized.endsWith("ing") && normalized.length > 4) {
     const stem = normalized.slice(0, -3);
-    candidates.push(stem, `${stem}e`);
+    const guessedBase = guessIngBaseLemma(normalized);
+    candidates.push(guessedBase, stem, `${stem}e`);
 
     if (/([b-df-hj-np-tv-z])\1$/.test(stem)) {
       candidates.push(stem.slice(0, -1));
@@ -371,6 +398,14 @@ function selectLexiconMatchesWithContext(
           matchedEntries: verbEntries
         };
       }
+    }
+
+    const inferredVerbLemma = lemmaOptions.find((option) => option !== normalizeToken(surface));
+    if (inferredVerbLemma) {
+      return {
+        selectedLemma: inferredVerbLemma,
+        matchedEntries: []
+      };
     }
   }
 

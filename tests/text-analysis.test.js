@@ -129,6 +129,19 @@ test("extractCandidateSeeds treats enjoys living in as a verb use of live", () =
   assert.ok(!result.candidates.some((candidate) => candidate.surface.toLowerCase() === "living"));
 });
 
+test("extractCandidateSeeds shows the base lemma for unknown verbal -ing forms like flanking", () => {
+  const result = extractCandidateSeeds({
+    text: "Potted plants were flanking the entrance.",
+    threshold: "B1",
+    lexiconIndex
+  });
+
+  const flanking = result.candidates.find((candidate) => candidate.surface.toLowerCase() === "flanking");
+  assert.ok(flanking);
+  assert.equal(flanking.lemma, "flank");
+  assert.equal(flanking.missingFromLexicon, true);
+});
+
 test("extractCandidateSeeds keeps true B1 noun uses like cost of living", () => {
   const result = extractCandidateSeeds({
     text: "The cost of living is high in the city.",
