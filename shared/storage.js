@@ -13,6 +13,14 @@ export const DEFAULT_SETTINGS = Object.freeze({
   backendBaseUrl: DEFAULT_BACKEND_BASE_URL
 });
 
+const VALID_BUBBLE_PLACEMENTS = new Set([
+  "auto",
+  "right",
+  "left",
+  "below",
+  "bottom-left"
+]);
+
 const PLACEHOLDER_DEFINITIONS = new Set([
   "This word may be hard in this text.",
   "A word that may be hard in this text."
@@ -142,6 +150,9 @@ export async function getSettings() {
   return {
     ...DEFAULT_SETTINGS,
     ...storedSettings,
+    bubblePlacement: VALID_BUBBLE_PLACEMENTS.has(storedSettings.bubblePlacement)
+      ? storedSettings.bubblePlacement
+      : DEFAULT_SETTINGS.bubblePlacement,
     backendBaseUrl: migratedBackendBaseUrl ?? DEFAULT_BACKEND_BASE_URL
   };
 }

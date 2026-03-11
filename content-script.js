@@ -1,6 +1,13 @@
 (function () {
   const INITIAL_HYDRATION_CARD_COUNT = 6;
   const BACKGROUND_HYDRATION_CARD_COUNT = 8;
+  const VALID_BUBBLE_PLACEMENTS = new Set([
+    "auto",
+    "right",
+    "left",
+    "below",
+    "bottom-left"
+  ]);
   const STYLE_TEXT = `
     :host {
       all: initial;
@@ -501,10 +508,7 @@
     const viewportLeft = padding;
     const viewportRight = window.innerWidth - bubbleRect.width - padding;
     const viewportBottom = window.innerHeight - bubbleRect.height - padding;
-    const topLeft = makeViewportCandidate(viewportTop, viewportLeft, 12);
-    const topRight = makeViewportCandidate(viewportTop, viewportRight, 13);
     const bottomLeft = makeViewportCandidate(viewportBottom, viewportLeft, 14);
-    const bottomRight = makeViewportCandidate(viewportBottom, viewportRight, 15);
 
     return {
       auto: [
@@ -514,21 +518,17 @@
         leftMiddle,
         belowLeft,
         belowCenter,
-        aboveLeft,
-        aboveCenter,
         rightBottom,
         leftBottom,
         belowRight,
+        aboveLeft,
+        aboveCenter,
         aboveRight
       ],
-      right: [rightTop, rightMiddle, rightBottom, belowCenter, aboveCenter, leftMiddle],
-      left: [leftTop, leftMiddle, leftBottom, belowCenter, aboveCenter, rightMiddle],
-      below: [belowLeft, belowCenter, belowRight, rightMiddle, leftMiddle, aboveCenter],
-      above: [aboveLeft, aboveCenter, aboveRight, rightMiddle, leftMiddle, belowCenter],
-      "bottom-right": [bottomRight],
-      "bottom-left": [bottomLeft],
-      "top-right": [topRight],
-      "top-left": [topLeft]
+      right: [rightTop, rightMiddle, rightBottom, belowCenter, leftMiddle],
+      left: [leftTop, leftMiddle, leftBottom, belowCenter, rightMiddle],
+      below: [belowLeft, belowCenter, belowRight, rightMiddle, leftMiddle],
+      "bottom-left": [bottomLeft]
     };
   }
 
@@ -570,7 +570,9 @@
       bottom: rect.bottom,
       left: rect.left
     };
-    const placementMode = state.settings.bubblePlacement ?? "auto";
+    const placementMode = VALID_BUBBLE_PLACEMENTS.has(state.settings.bubblePlacement)
+      ? state.settings.bubblePlacement
+      : "auto";
     const candidatesByPlacement = buildPlacementCandidates(rect, bubbleRect, padding, gap);
     const candidates = candidatesByPlacement[placementMode] ?? candidatesByPlacement.auto;
 
