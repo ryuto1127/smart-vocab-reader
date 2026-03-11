@@ -249,6 +249,28 @@ function guessIngBaseLemma(normalized) {
   return stem;
 }
 
+function guessEdBaseLemma(normalized) {
+  if (!normalized.endsWith("ed") || normalized.length <= 3) {
+    return normalized;
+  }
+
+  if (normalized.endsWith("ied") && normalized.length > 4) {
+    return `${normalized.slice(0, -3)}y`;
+  }
+
+  const stem = normalized.slice(0, -2);
+
+  if (/([b-df-hj-np-tv-z])\1$/.test(stem)) {
+    return stem.slice(0, -1);
+  }
+
+  if (stem.endsWith("v")) {
+    return `${stem}e`;
+  }
+
+  return stem;
+}
+
 export function lemmaCandidates(surface) {
   const normalized = normalizeToken(surface);
 
@@ -283,7 +305,8 @@ export function lemmaCandidates(surface) {
 
   if (normalized.endsWith("ed") && normalized.length > 3) {
     const stem = normalized.slice(0, -2);
-    candidates.push(stem, `${stem}e`);
+    const guessedBase = guessEdBaseLemma(normalized);
+    candidates.push(guessedBase, stem, `${stem}e`);
 
     if (/([b-df-hj-np-tv-z])\1$/.test(stem)) {
       candidates.push(stem.slice(0, -1));
@@ -372,6 +395,24 @@ function shouldPreferVerbLemmaForIng(surface, previousNormalized, nextNormalized
   return PREPOSITIONS.has(previousNormalized) && OBJECT_STARTERS.has(nextNormalized);
 }
 
+function shouldPreferBaseLemmaForEd(surface, previousNormalized, nextNormalized) {
+  const normalized = normalizeToken(surface);
+
+  if (!normalized.endsWith("ed") || normalized.length <= 3) {
+    return false;
+  }
+
+  if (AUXILIARY_VERBS.has(previousNormalized)) {
+    return true;
+  }
+
+  if (OBJECT_STARTERS.has(previousNormalized) && nextNormalized && !OBJECT_STARTERS.has(nextNormalized)) {
+    return true;
+  }
+
+  return false;
+}
+
 function selectLexiconMatchesWithContext(
   surface,
   lemmaOptions,
@@ -405,6 +446,19 @@ function selectLexiconMatchesWithContext(
       return {
         selectedLemma: inferredVerbLemma,
         matchedEntries: []
+      };
+    }
+  }
+
+  if (shouldPreferBaseLemmaForEd(surface, previousNormalized, nextNormalized)) {
+    const inferredBaseLemma = lemmaOptions.find((option) => option !== normalizeToken(surface));
+    if (inferredBaseLemma) {
+      const entries = lexiconIndex.byNormalizedForm.get(inferredBaseLemma) ?? [];
+      const verbOrAdjectiveEntries = entries.filter((entry) => entry.partsOfSpeech.some((part) => part === "verb" || part === "adjective"));
+
+      return {
+        selectedLemma: inferredBaseLemma,
+        matchedEntries: verbOrAdjectiveEntries
       };
     }
   }

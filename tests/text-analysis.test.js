@@ -73,7 +73,7 @@ test("extractCandidateSeeds avoids easy ambiguous matches below the threshold", 
   assert.ok(lemmas.includes("negotiate"));
 });
 
-test("extractCandidateSeeds does not force -ed words onto unrelated noun lemmas", () => {
+test("extractCandidateSeeds infers the base lemma for participial adjectives like potted", () => {
   const result = extractCandidateSeeds({
     text: "She bought a potted plant for the kitchen window.",
     threshold: "B1",
@@ -82,7 +82,7 @@ test("extractCandidateSeeds does not force -ed words onto unrelated noun lemmas"
 
   const potted = result.candidates.find((candidate) => candidate.surface.toLowerCase() === "potted");
   assert.ok(potted);
-  assert.equal(potted.lemma, "potted");
+  assert.equal(potted.lemma, "pot");
   assert.equal(potted.missingFromLexicon, true);
 });
 

@@ -246,7 +246,8 @@
   const state = {
     settings: {
       readingMode: false,
-      cefrLevel: "B1"
+      cefrLevel: "B1",
+      bubblePlacement: "auto"
     },
     savedWordKeys: [],
     bubbleHost: null,
@@ -254,7 +255,8 @@
     currentRunId: 0,
     currentRange: null,
     currentCards: [],
-    currentMeta: null
+    currentMeta: null,
+    contentScrollTop: 0
   };
 
   function sendMessage(message) {
@@ -337,6 +339,7 @@
       state.shadowRoot = null;
       state.currentRange = null;
       state.currentCards = [];
+      state.contentScrollTop = 0;
     }
   }
 
@@ -426,6 +429,10 @@
 
   function renderBubble(status) {
     ensureBubbleHost();
+    const currentContent = state.shadowRoot.querySelector(".content");
+    if (currentContent) {
+      state.contentScrollTop = currentContent.scrollTop;
+    }
 
     let content = "";
 
@@ -453,11 +460,76 @@
       </div>
     `;
 
+    const nextContent = state.shadowRoot.querySelector(".content");
+    if (nextContent) {
+      nextContent.scrollTop = state.contentScrollTop;
+      nextContent.addEventListener("scroll", () => {
+        state.contentScrollTop = nextContent.scrollTop;
+      }, { passive: true });
+    }
+
     positionBubble();
   }
 
   function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
+  }
+
+  function makeSelectionCandidate(top, left, priority) {
+    return { top, left, priority, type: "selection" };
+  }
+
+  function makeViewportCandidate(top, left, priority) {
+    return { top, left, priority, type: "viewport" };
+  }
+
+  function buildPlacementCandidates(rect, bubbleRect, padding, gap) {
+    const rightTop = makeSelectionCandidate(rect.top, rect.right + gap, 0);
+    const rightMiddle = makeSelectionCandidate(rect.top + (rect.height - bubbleRect.height) / 2, rect.right + gap, 1);
+    const rightBottom = makeSelectionCandidate(rect.bottom - bubbleRect.height, rect.right + gap, 2);
+    const leftTop = makeSelectionCandidate(rect.top, rect.left - bubbleRect.width - gap, 3);
+    const leftMiddle = makeSelectionCandidate(rect.top + (rect.height - bubbleRect.height) / 2, rect.left - bubbleRect.width - gap, 4);
+    const leftBottom = makeSelectionCandidate(rect.bottom - bubbleRect.height, rect.left - bubbleRect.width - gap, 5);
+    const belowLeft = makeSelectionCandidate(rect.bottom + gap, rect.left, 6);
+    const belowCenter = makeSelectionCandidate(rect.bottom + gap, rect.left + (rect.width - bubbleRect.width) / 2, 7);
+    const belowRight = makeSelectionCandidate(rect.bottom + gap, rect.right - bubbleRect.width, 8);
+    const aboveLeft = makeSelectionCandidate(rect.top - bubbleRect.height - gap, rect.left, 9);
+    const aboveCenter = makeSelectionCandidate(rect.top - bubbleRect.height - gap, rect.left + (rect.width - bubbleRect.width) / 2, 10);
+    const aboveRight = makeSelectionCandidate(rect.top - bubbleRect.height - gap, rect.right - bubbleRect.width, 11);
+
+    const viewportTop = padding;
+    const viewportLeft = padding;
+    const viewportRight = window.innerWidth - bubbleRect.width - padding;
+    const viewportBottom = window.innerHeight - bubbleRect.height - padding;
+    const topLeft = makeViewportCandidate(viewportTop, viewportLeft, 12);
+    const topRight = makeViewportCandidate(viewportTop, viewportRight, 13);
+    const bottomLeft = makeViewportCandidate(viewportBottom, viewportLeft, 14);
+    const bottomRight = makeViewportCandidate(viewportBottom, viewportRight, 15);
+
+    return {
+      auto: [
+        rightTop,
+        rightMiddle,
+        leftTop,
+        leftMiddle,
+        belowLeft,
+        belowCenter,
+        aboveLeft,
+        aboveCenter,
+        rightBottom,
+        leftBottom,
+        belowRight,
+        aboveRight
+      ],
+      right: [rightTop, rightMiddle, rightBottom, belowCenter, aboveCenter, leftMiddle],
+      left: [leftTop, leftMiddle, leftBottom, belowCenter, aboveCenter, rightMiddle],
+      below: [belowLeft, belowCenter, belowRight, rightMiddle, leftMiddle, aboveCenter],
+      above: [aboveLeft, aboveCenter, aboveRight, rightMiddle, leftMiddle, belowCenter],
+      "bottom-right": [bottomRight],
+      "bottom-left": [bottomLeft],
+      "top-right": [topRight],
+      "top-left": [topLeft]
+    };
   }
 
   function getRectOverlapArea(first, second) {
@@ -498,17 +570,9 @@
       bottom: rect.bottom,
       left: rect.left
     };
-
-    const candidates = [
-      { top: rect.top, left: rect.right + gap, priority: 0 },
-      { top: rect.top + (rect.height - bubbleRect.height) / 2, left: rect.right + gap, priority: 1 },
-      { top: rect.top, left: rect.left - bubbleRect.width - gap, priority: 2 },
-      { top: rect.top + (rect.height - bubbleRect.height) / 2, left: rect.left - bubbleRect.width - gap, priority: 3 },
-      { top: rect.bottom + gap, left: rect.left, priority: 4 },
-      { top: rect.bottom + gap, left: rect.left + (rect.width - bubbleRect.width) / 2, priority: 5 },
-      { top: rect.top - bubbleRect.height - gap, left: rect.left, priority: 6 },
-      { top: rect.top - bubbleRect.height - gap, left: rect.left + (rect.width - bubbleRect.width) / 2, priority: 7 }
-    ];
+    const placementMode = state.settings.bubblePlacement ?? "auto";
+    const candidatesByPlacement = buildPlacementCandidates(rect, bubbleRect, padding, gap);
+    const candidates = candidatesByPlacement[placementMode] ?? candidatesByPlacement.auto;
 
     const bestCandidate = candidates
       .map((candidate) => {
@@ -520,13 +584,19 @@
           bottom: top + bubbleRect.height,
           left
         };
+        const overlapArea = candidate.type === "viewport"
+          ? 0
+          : getRectOverlapArea(placedBubble, selectionRect);
+        const distance = candidate.type === "viewport"
+          ? candidate.priority
+          : getRectDistance(placedBubble, selectionRect);
 
         return {
           ...candidate,
           top,
           left,
-          overlapArea: getRectOverlapArea(placedBubble, selectionRect),
-          distance: getRectDistance(placedBubble, selectionRect)
+          overlapArea,
+          distance
         };
       })
       .sort((first, second) => {
@@ -718,6 +788,7 @@
 
     const runId = ++state.currentRunId;
     state.currentRange = selection.range;
+    state.contentScrollTop = 0;
     renderBubble({ kind: "loading" });
 
     const previewPromise = sendMessage({
@@ -875,6 +946,10 @@
         ...state.settings,
         ...changes.settings.newValue
       };
+
+      if (state.bubbleHost) {
+        positionBubble();
+      }
     }
 
     if (changes.savedWords) {

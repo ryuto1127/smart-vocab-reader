@@ -2,6 +2,7 @@ import { getSavedWords, getSettings, setSettings } from "./shared/storage.js";
 
 const toggleButton = document.querySelector("#toggle-reading");
 const cefrSelect = document.querySelector("#cefr-level");
+const bubblePlacementSelect = document.querySelector("#bubble-placement");
 const savedSummary = document.querySelector("#saved-summary");
 const openDashboardButton = document.querySelector("#open-dashboard");
 const openOnboardingButton = document.querySelector("#open-onboarding");
@@ -14,6 +15,7 @@ function renderToggle(settings) {
 async function hydrate() {
   const [settings, savedWords] = await Promise.all([getSettings(), getSavedWords()]);
   cefrSelect.value = settings.cefrLevel;
+  bubblePlacementSelect.value = settings.bubblePlacement;
   renderToggle(settings);
   savedSummary.textContent = `${savedWords.length} saved ${savedWords.length === 1 ? "word" : "words"}`;
 }
@@ -31,6 +33,12 @@ toggleButton.addEventListener("click", async (event) => {
 cefrSelect.addEventListener("change", async (event) => {
   await setSettings({
     cefrLevel: event.target.value
+  });
+});
+
+bubblePlacementSelect.addEventListener("change", async (event) => {
+  await setSettings({
+    bubblePlacement: event.target.value
   });
 });
 

@@ -9,6 +9,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   cefrLevel: "B1",
   readingMode: false,
   onboardingCompleted: false,
+  bubblePlacement: "auto",
   backendBaseUrl: DEFAULT_BACKEND_BASE_URL
 });
 
