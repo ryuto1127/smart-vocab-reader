@@ -121,7 +121,7 @@ That command updates [shared/runtime-config.js](/Users/ryuto/Documents/Smart%20V
 
 ## AI configuration
 
-- Default model: `gpt-4o-mini`
+- Default analyze/details model: `gpt-5.4-mini`
 - Local development API URL: `http://localhost:8787`
 - Deployed API URL: your `workers.dev` endpoint after running `npm run configure:backend -- ...`
 - If no API key is present, the backend still returns cards using the local CEFR shortlist, but the definitions/examples are placeholder fallback text.

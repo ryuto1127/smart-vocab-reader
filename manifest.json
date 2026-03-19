@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "CEFR Reading Assistant",
-  "version": "2.0.0",
+  "name": "CEFR Reading Assistant – Learn Vocabulary While Reading",
+  "version": "4.0.0",
   "description": "Show difficult words near your selected text and save them for review.",
   "permissions": [
     "contextMenus",
