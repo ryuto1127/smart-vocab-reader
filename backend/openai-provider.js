@@ -6,8 +6,8 @@ import {
 } from "../shared/ai-schema.js";
 
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
-const DEFAULT_ANALYZE_MODEL = "gpt-5.4-mini";
-const DEFAULT_DETAILS_MODEL = "gpt-5.4-mini";
+const DEFAULT_ANALYZE_MODEL = "gpt-5.4-nano";
+const DEFAULT_DETAILS_MODEL = "gpt-5.4-nano";
 const DEFAULT_OPENAI_TIMEOUT_MS = 26000;
 
 function getDefaultEnv() {
